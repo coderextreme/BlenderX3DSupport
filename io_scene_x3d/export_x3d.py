@@ -1,22 +1,6 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
+# SPDX-FileCopyrightText: 2011-2022 Blender Foundation
 #
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
-
-# <pep8 compliant>
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 # Contributors: bart:neeneenee*de, http://www.neeneenee.de/vrml, Campbell Barton
 
@@ -249,6 +233,7 @@ def export(file,
         uuid_cache_material = {}  # material
         uuid_cache_image = {}     # image
         uuid_cache_world = {}     # world
+        uuid_cache_skeleton = {}  # skeleton
         CA_ = 'CA_'
         OB_ = 'OB_'
         ME_ = 'ME_'
@@ -269,6 +254,7 @@ def export(file,
         uuid_cache_material = uuid_cache         # material
         uuid_cache_image = uuid_cache            # image
         uuid_cache_world = uuid_cache            # world
+        uuid_cache_skeleton = uuid_cache         # skeleton
         del uuid_cache
         CA_ = ''
         OB_ = ''
@@ -284,7 +270,7 @@ def export(file,
     # store files to copy
     copy_set = set()
 
-    # store names of newly cerated meshes, so we dont overlap
+    # store names of newly created meshes, so we dont overlap
     mesh_name_set = set()
 
     fw = file.write
@@ -407,9 +393,100 @@ def export(file,
         ident += '\t'
         return ident
 
+    def writeHAnim_begin(ident, obj, matrix, def_id, hanim_node_str):
+        ident_step = ident + (' ' * (-len(ident) + \
+        fw('%s<%s ' % (ident, hanim_node_str))))
+        if def_id is not None:
+            fw('DEF=%s\n' % def_id)
+        else:
+            fw('\n')
+
+        loc, rot, sca = matrix.decompose()
+        rot = rot.to_axis_angle()
+        rot = (*rot[0], rot[1])
+        center = obj.location
+
+        fw(ident_step + 'translation="%.6f %.6f %.6f"\n' % loc[:])
+        fw(ident_step + 'center="%.6f %.6f %.6f"\n' % center[:])
+        fw(ident_step + 'scale="%.6f %.6f %.6f"\n' % sca[:])
+        fw(ident_step + 'rotation="%.6f %.6f %.6f %.6f"\n' % rot)
+        if def_id == '"humanoid_root"':
+            print(f' def_id is "humanoid_root", adding containerField="skeleton"')
+            fw(ident_step + 'containerField="skeleton"\n')
+        fw(ident_step + '>\n')
+        ident += '\t'
+        return ident
+
     def writeTransform_end(ident):
         ident = ident[:-1]
         fw('%s</Transform>\n' % ident)
+        return ident
+
+    def writeHAnim_end(ident, hanim_node_str):
+        ident = ident[:-1]
+        fw('%s</%s>\n' % (ident, hanim_node_str))
+        return ident
+
+    def writeJoints(ident, joint_parent, joint, matrix, joint_lookup):
+        matrix_fallback = mathutils.Matrix()
+        world = scene.world
+        if use_hierarchy:
+            try:
+                joint_matrix_world = joint.matrix
+            except AttributeError:
+                joint_matrix_world = matrix
+            try:
+                if joint_parent:
+                    joint_matrix = joint_parent.matrix.inverted(matrix_fallback) @ joint_matrix_world
+                else:
+                    joint_matrix = joint_matrix_world
+            except AttributeError:
+                joint_matrix = joint_matrix_world
+            joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
+
+            joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
+            ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint")
+
+            print(f"Info: Exporting joint {joint.name}")
+            for joint_child in joint_lookup[joint.name]['joint_children']:
+                writeJoints(ident, joint, joint_child.joint, joint_matrix, joint_lookup)
+            ident = writeHAnim_end(ident, "HAnimJoint")
+        return ident
+
+
+    class HAnimNode:
+        def __init__(self, name, parent_name, joint, joint_lookup):
+            self.name = name
+            self.parent_name = parent_name
+            self.joint = joint
+            joint_lookup[joint.name] = {}
+            joint_lookup[joint.name]['joint'] = joint
+            joint_lookup[joint.name]['joint_children'] = []
+            if parent_name:
+                try:
+                    joint_lookup[parent_name]['joint_children'].append(self)
+                except:
+                    joint_lookup[parent_name]['joint_children'].append(self)
+
+    def export_armature(ident, armature_parent, armature, armature_matrix):
+        # each armature needs their own hierarchy
+        joint_lookup = {}
+        bpy.context.view_layer.objects.active = armature
+        bpy.ops.object.mode_set(mode='POSE')  # could be 'POSE' or 'OBJECT'
+        armature_id = quoteattr("hanim_"+armature.parent.name)
+        print(f"Info: Exporting {armature_id}, object type {armature.type}")
+        ident = writeHAnim_begin(ident, armature, armature_matrix, armature_id, "HAnimHumanoid")
+
+        node = HAnimNode(armature.name, None, armature, joint_lookup)
+
+        for joint in armature.pose.bones:
+            if joint.parent:
+                joint_parent_name = joint.parent.name
+            else:
+                joint_parent_name = armature.name
+            node = HAnimNode(joint.name, joint_parent_name, joint, joint_lookup)
+        writeJoints(ident, armature_parent, armature, armature_matrix, joint_lookup)
+        ident = writeHAnim_end(ident, "HAnimHumanoid")
         return ident
 
     def writeSpotLight(ident, obj, matrix, light, world):
@@ -1466,8 +1543,12 @@ def export(file,
                     writeDirectionalLight(ident, obj, obj_matrix, data, world)
                 else:
                     writeDirectionalLight(ident, obj, obj_matrix, data, world)
+            elif obj_type == 'ARMATURE':
+                data = obj.data
+                armature = obj
+                export_armature(ident, obj_main, armature, obj_matrix)
             else:
-                #print "Info: Ignoring [%s], object type [%s] not handle yet" % (object.name,object.getType)
+                print(f"Info: Ignoring {obj.name}, object type {obj.type} not handled yet")
                 pass
 
         # ---------------------------------------------------------------------
