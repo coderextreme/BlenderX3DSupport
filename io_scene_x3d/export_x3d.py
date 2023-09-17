@@ -303,6 +303,7 @@ def export(file,
         ident += '\t'
         fw('%s<head>\n' % ident)
         ident += '\t'
+        fw('%s<component level="1" name="HAnim"/>\n' % (ident))
         fw('%s<meta name="filename" content=%s />\n' % (ident, filepath_quoted))
         fw('%s<meta name="generator" content=%s />\n' % (ident, blender_ver_quoted))
         # this info was never updated, so blender version should be enough
@@ -393,7 +394,9 @@ def export(file,
         ident += '\t'
         return ident
 
-    def writeHAnim_begin(ident, obj, matrix, def_id, hanim_node_str):
+
+
+    def writeHAnim_begin(ident, obj, matrix, def_id, hanim_node_str, segment_name, skinCoordIndex, skinCoordWeight):
         ident_step = ident + (' ' * (-len(ident) + \
         fw('%s<%s ' % (ident, hanim_node_str))))
         if def_id is not None:
@@ -410,10 +413,29 @@ def export(file,
         fw(ident_step + 'center="%.6f %.6f %.6f"\n' % center[:])
         fw(ident_step + 'scale="%.6f %.6f %.6f"\n' % sca[:])
         fw(ident_step + 'rotation="%.6f %.6f %.6f %.6f"\n' % rot)
+        if hanim_node_str == "HAnimJoint":
+            if skinCoordIndex:
+                fw(ident_step + 'skinCoordIndex="%s"\n' % " ".join(skinCoordIndex))
+            if skinCoordWeight:
+                fw(ident_step + 'skinCoordWeight="%s"\n' % " ".join(skinCoordWeight))
         if def_id == '"humanoid_root"':
             print(f' def_id is "humanoid_root", adding containerField="skeleton"')
             fw(ident_step + 'containerField="skeleton"\n')
         fw(ident_step + '>\n')
+        if segment_name:
+            fw('%s<HAnimSegment DEF="%s">\n' % (ident_step, segment_name))
+            fw('%s<HAnimSite translation="%.6f %.6f %.6f">\n' % (ident_step, loc[0], loc[1], loc[2]))
+            fw("%s<Transform>\n" % ident_step)
+            fw("%s<Shape>\n" % ident_step)
+            fw("%s<Appearance>\n" % ident_step)
+            fw('%s<Material diffuseColor="0 0 1">\n' % ident_step)
+            fw("%s</Material>\n" % ident_step)
+            fw("%s</Appearance>\n" % ident_step)
+            fw('%s<Box size="1 1 1"/>\n' % ident_step)
+            fw("%s</Shape>\n" % ident_step)
+            fw("%s</Transform>\n" % ident_step)
+            fw("%s</HAnimSite>\n" % ident_step)
+            fw('%s</HAnimSegment>\n' % ident_step)
         ident += '\t'
         return ident
 
@@ -427,7 +449,7 @@ def export(file,
         fw('%s</%s>\n' % (ident, hanim_node_str))
         return ident
 
-    def writeJoints(ident, joint_parent, joint, matrix, joint_lookup):
+    def writeJoints(ident, joint_parent, joint, matrix, joint_lookup, segment_lookup, armature):
         matrix_fallback = mathutils.Matrix()
         world = scene.world
         if use_hierarchy:
@@ -444,18 +466,33 @@ def export(file,
                 joint_matrix = joint_matrix_world
             joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
 
+
+            for mesh in bpy.data.objects:
+                if mesh.type == 'MESH':
+                    if mesh.parent == armature:
+                        vertex_groups = mesh.vertex_groups
+                        skinCoordIndex = []
+                        for vertex in mesh.data.vertices:
+                            skinCoordWeight = []
+                            for group in vertex.groups:
+                                #print("Mesh", vertex_groups);
+                                # print("groups", vertex.groups);
+                                if group.group >= 0  and group.group < len(vertex_groups) and vertex_groups[group.group].name == joint.name:
+                                    skinCoordIndex.append(str(vertex.index))
+                                    skinCoordWeight.append(str(group.weight))
+        
             joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
-            ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint")
+            ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint", segment_lookup[joint.name], skinCoordIndex, skinCoordWeight)
 
             print(f"Info: Exporting joint {joint.name}")
             for joint_child in joint_lookup[joint.name]['joint_children']:
-                writeJoints(ident, joint, joint_child.joint, joint_matrix, joint_lookup)
+                writeJoints(ident, joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature)
             ident = writeHAnim_end(ident, "HAnimJoint")
         return ident
 
 
     class HAnimNode:
-        def __init__(self, name, parent_name, joint, joint_lookup):
+        def __init__(self, name, parent_name, joint, joint_lookup, segment_lookup):
             self.name = name
             self.parent_name = parent_name
             self.joint = joint
@@ -469,23 +506,39 @@ def export(file,
                     joint_lookup[parent_name]['joint_children'].append(self)
 
     def export_armature(ident, armature_parent, armature, armature_matrix):
+        segment_lookup = {}
+        with open("JointSegment.txt", "r") as josefile:
+            j = True
+            for line in josefile:
+                array = line.split(" ")
+                tag = array[0]
+                name = array[1]
+                if tag == "HAnimJoint":
+                    joint = name
+                elif tag == "HAnimSegment":
+                    segment_lookup[joint] = name
+
         # each armature needs their own hierarchy
         joint_lookup = {}
         bpy.context.view_layer.objects.active = armature
         bpy.ops.object.mode_set(mode='POSE')  # could be 'POSE' or 'OBJECT'
         armature_id = quoteattr("hanim_"+armature.parent.name)
         print(f"Info: Exporting {armature_id}, object type {armature.type}")
-        ident = writeHAnim_begin(ident, armature, armature_matrix, armature_id, "HAnimHumanoid")
+        ident = writeHAnim_begin(ident, armature, armature_matrix, armature_id, "HAnimHumanoid", None, None, None)
 
-        node = HAnimNode(armature.name, None, armature, joint_lookup)
+        node = HAnimNode(armature.name, None, armature, joint_lookup, segment_lookup)
 
         for joint in armature.pose.bones:
+            # writeJoints(ident, armature, joint, armature_matrix)
             if joint.parent:
                 joint_parent_name = joint.parent.name
             else:
                 joint_parent_name = armature.name
-            node = HAnimNode(joint.name, joint_parent_name, joint, joint_lookup)
-        writeJoints(ident, armature_parent, armature, armature_matrix, joint_lookup)
+            node = HAnimNode(joint.name, joint_parent_name, joint, joint_lookup, segment_lookup)
+
+        writeJoints(ident, armature_parent, armature, armature_matrix, joint_lookup, segment_lookup, armature)
+        for joint in armature.pose.bones:
+            fw('%s<HAnimJoint USE=%s containerField=%s/>\n' % (ident, quoteattr(joint.name), quoteattr("joints")))
         ident = writeHAnim_end(ident, "HAnimHumanoid")
         return ident
 
