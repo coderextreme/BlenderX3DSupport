@@ -470,6 +470,142 @@ def export(context, x3dv_export_settings):
         
         return lite
 
+    def b2xHAnimNode(obj, matrix, def_id, tag, segment_name, skinCoordIndex, skinCoordWeight):
+        loc, rot, sca = matrix.decompose()
+        rot = rot.to_axis_angle()
+        rot = (*rot[0], rot[1])
+        center = obj.location
+
+        match tag:
+              case     "HAnimJoint":
+                  node = HAnimJoint(DEF=def_id,
+                     name=obj.name,
+                     skinCoordIndex=skinCoordIndex,
+                     skinCoordWeight=skinCoordWeight,
+                     translation=loc[:],
+                     center=center[:],
+                     rotation=rot,
+                     children=[
+                        HAnimSegment(DEF=segment_name, children=[
+                            HAnimSite(translation=loc[:], children=[
+                                Transform( children=[
+                                    Shape(
+                                        appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+                                        geometry=Box(size = (1, 1, 1))
+                                    )
+                                ])
+                            ])
+                        ])
+                     ])
+                  if def_id == '"humanoid_root"':
+                      node.containerField = "skeleton"
+                  return node
+              case     "HAnimSegment":
+                  node = HAnimSegment(DEF=def_id, name=obj.name)
+                  return node
+              case     "HAnimSite":
+                  node = HAnimSite(DEF=def_id, name=obj.name)
+                  return node
+              case     "HAnimMotion":
+                  node = HAnimMotion(DEF=def_id, name=obj.name)
+                  return node
+              case     "HAnimHumanoid":
+                  node = HAnimHumanoid(DEF=def_id, name=obj.name)
+                  return node
+
+    def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature):
+        matrix_fallback = mathutils.Matrix()
+        world = scene.world
+        if export_settings['x3dv_use_hierarchy']:
+            try:
+                joint_matrix_world = joint.matrix
+            except AttributeError:
+                joint_matrix_world = matrix
+            try:
+                if joint_parent:
+                    joint_matrix = joint_parent.matrix.inverted(matrix_fallback) @ joint_matrix_world
+                else:
+                    joint_matrix = joint_matrix_world
+            except AttributeError:
+                joint_matrix = joint_matrix_world
+            joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
+
+
+            for mesh in bpy.data.objects:
+                if mesh.type == 'MESH':
+                    if mesh.parent == armature:
+                        vertex_groups = mesh.vertex_groups
+                        skinCoordIndex = []
+                        for vertex in mesh.data.vertices:
+                            skinCoordWeight = []
+                            for group in vertex.groups:
+                                #print("Mesh", vertex_groups);
+                                # print("groups", vertex.groups);
+                                if group.group >= 0  and group.group < len(vertex_groups) and vertex_groups[group.group].name == joint.name:
+                                    skinCoordIndex.append(vertex.index)
+                                    skinCoordWeight.append(group.weight)
+        
+            # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
+            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_lookup[joint.name], skinCoordIndex, skinCoordWeight)
+
+            print(f"Info: Exporting joint {joint.name}")
+            for joint_child in joint_lookup[joint.name]['joint_children']:
+                child = b2xJoint(joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature) 
+                node.children.append(child)
+        return node
+
+
+    class HAnimNode:
+        def __init__(self, name, parent_name, joint, joint_lookup):
+            self.name = name
+            self.parent_name = parent_name
+            self.joint = joint
+            joint_lookup[joint.name] = {}
+            joint_lookup[joint.name]['joint'] = joint
+            joint_lookup[joint.name]['joint_children'] = []
+            if parent_name:
+                try:
+                    joint_lookup[parent_name]['joint_children'].append(self)
+                except:
+                    joint_lookup[parent_name]['joint_children'].append(self)
+
+
+    def b2xArmature(obj, obj_main, obj_matrix, data, world):
+        armature = obj
+        armature_matrix = obj_matrix
+        print(f"Info: Exporting {armature.name}, object type {armature.type}")
+        segment_lookup = {}
+        with open("JointSegment.txt", "r") as josefile:
+            j = True
+            for line in josefile:
+                array = line.split(" ")
+                tag = array[0]
+                name = array[1]
+                if tag == "HAnimJoint":
+                    joint = name
+                elif tag == "HAnimSegment":
+                    segment_lookup[joint] = name
+
+        # each armature needs their own hierarchy
+        joint_lookup = {}
+        #bpy.context.view_layer.objects.active = armature
+        #bpy.ops.object.mode_set(mode='POSE')  # could be 'POSE' or 'OBJECT'
+        #armature_id = quoteattr("hanim_"+armature.parent.name)
+        humanoid = b2xHAnimNode(armature, armature_matrix, "hanim_"+armature.parent.name, "HAnimHumanoid", None, None, None)
+
+        HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
+        for joint in armature.pose.bones:
+            if joint.parent:
+                joint_parent_name = joint.parent.name
+            else:
+                joint_parent_name = armature.name
+            HAnimNode(joint.name, joint_parent_name, joint, joint_lookup) # populates joint_lookup
+
+        humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature)]
+        # joint output is currently before skeleton, so don't add it
+        #for joint in armature.pose.bones:
+        #    humanoid.joints.append(HAnimJoint(USE=joint.name))
+        return humanoid
 
     def b2xIndexedFaceSet(obj, mesh, mesh_name, matrix, world):
         obj_id = unique_name(obj, OB_ + obj.name, uuid_cache_object, clean_func=clean_def, sep="_")
@@ -1438,6 +1574,9 @@ def export(context, x3dv_export_settings):
                     node = b2xDirectionalLight( obj, obj_matrix, data, world)
                 else:
                     node = b2xDirectionalLight( obj, obj_matrix, data, world)
+            elif obj_type == 'ARMATURE':
+                data = obj.data
+                node = b2xArmature(obj, obj_main, obj_matrix, data, world)
             else:
                 print("Info: Ignoring [%s], object type [%s] not handle yet" % (obj.name,obj_type))
                 pass
