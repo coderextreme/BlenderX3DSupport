@@ -24,6 +24,7 @@ from io_scene_x3dv.blender.com.x3d import *
 import math
 import os
 import mathutils
+import random
 
 from bpy_extras.io_utils import create_derived_objects
 
@@ -182,6 +183,8 @@ JointsSegments = {
 H3D_TOP_LEVEL = 'TOP_LEVEL_TI'
 H3D_CAMERA_FOLLOW = 'CAMERA_FOLLOW_TRANSFORM'
 H3D_VIEW_MATRIX = 'view_matrix'
+
+HANIM_DEF_PREFIX = 'hanim_'
 
 
 def clamp_color(col):
@@ -630,16 +633,15 @@ def export(context, x3dv_export_settings):
         match tag:
               case     "HAnimJoint":
                   print(f"Exporting bone/{tag} {obj.name}")
-                  node = HAnimJoint(DEF=def_id,
-                     name=obj.name,
+                  node = HAnimJoint(
                      skinCoordIndex=skinCoordIndex,
                      skinCoordWeight=skinCoordWeight,
                      translation=loc[:],
                      center=center[:],
                      rotation=rot,
                      children=[
-                        HAnimSegment(DEF=segment_name, children=[
-                            HAnimSite(translation=loc[:], children=[
+                        HAnimSegment(DEF=HANIM_DEF_PREFIX+segment_name, name=segment_name, children=[
+                            HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", translation=loc[:], children=[
                                 Transform( children=[
                                     Shape(
                                         appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
@@ -649,20 +651,36 @@ def export(context, x3dv_export_settings):
                             ])
                         ])
                      ])
-                  if def_id == '"humanoid_root"':
+                  if def_id:
+                      node.DEF=HANIM_DEF_PREFIX+def_id
+                  if obj.name:
+                      node.name=obj.name
+                  if def_id == 'humanoid_root':
                       node.containerField = "skeleton"
                   return node
               case     "HAnimSegment":
                   print(f"Exporting type {tag} {obj.type}")
-                  node = HAnimSegment(DEF=def_id, name=obj.name)
+                  node = HAnimSegment()
+                  if def_id:
+                      node.DEF=HANIM_DEF_PREFIX+def_id
+                  if obj.name:
+                      node.name=obj.name
                   return node
               case     "HAnimSite":
                   print(f"Exporting type {tag} {obj.type}")
-                  node = HAnimSite(DEF=def_id, name=obj.name)
+                  node = HAnimSite()
+                  if def_id:
+                      node.DEF=HANIM_DEF_PREFIX+def_id
+                  if obj.name:
+                      node.name=obj.name
                   return node
               case     "HAnimHumanoid":
                   print(f"Exporting type {tag} {obj.type}")
-                  node = HAnimHumanoid(DEF=def_id, name=obj.name, motions=motions)
+                  node = HAnimHumanoid(motions=motions)
+                  if def_id:
+                      node.DEF=HANIM_DEF_PREFIX+def_id
+                  if obj.name:
+                      node.name=obj.name
                   return node
               case     "HAnimMotion":
                   print(f"Exporting motion of {tag} {obj.type}")
@@ -694,7 +712,10 @@ def export(context, x3dv_export_settings):
                                             # values.append(bone.scale[1]) # scale
                                             # values.append(bone.scale[2]) # scale
                                     numbones = len(armature.pose.bones)
+
                                     node = HAnimMotion(
+                                        enabled=True,
+                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 6)]),
                                         channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation " * numbones,
                                         joints=" ".join(bone.name for bone in armature.pose.bones),
                                         values=MFFloat(values)
@@ -795,8 +816,10 @@ def export(context, x3dv_export_settings):
 
         humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature)]
         # joint output is currently before skeleton, so don't add it
-        #for joint in armature.pose.bones:
-        #    humanoid.joints.append(HAnimJoint(USE=joint.name))
+        for joint in armature.pose.bones:
+            node = HAnimJoint(USE=HANIM_DEF_PREFIX+joint.name)
+            node.containerField = "skeleton"
+            humanoid.joints.append(node)
         return humanoid
 
     def b2xIndexedFaceSet(obj, mesh, mesh_name, matrix, world):
