@@ -638,7 +638,8 @@ def export(file,
             print(f"Info: Exporting joint {joint.name}")
             for joint_child in joint_lookup[joint.name]['joint_children']:
                 writeJoints(ident, joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature)
-            ident = writeHAnim_end(ident, "HAnimJoint")
+            if not joint.name.endswith("_end"):  # This is actually a site
+                ident = writeHAnim_end(ident, "HAnimJoint")
         return ident
 
 
