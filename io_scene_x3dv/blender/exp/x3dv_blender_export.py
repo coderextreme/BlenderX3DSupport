@@ -629,6 +629,7 @@ def export(context, x3dv_export_settings):
 
         match tag:
               case     "HAnimJoint":
+                  print(f"Exporting bone/{tag} {obj.name}")
                   node = HAnimJoint(DEF=def_id,
                      name=obj.name,
                      skinCoordIndex=skinCoordIndex,
@@ -652,27 +653,31 @@ def export(context, x3dv_export_settings):
                       node.containerField = "skeleton"
                   return node
               case     "HAnimSegment":
+                  print(f"Exporting type {tag} {obj.type}")
                   node = HAnimSegment(DEF=def_id, name=obj.name)
                   return node
               case     "HAnimSite":
+                  print(f"Exporting type {tag} {obj.type}")
                   node = HAnimSite(DEF=def_id, name=obj.name)
                   return node
-              case     "HAnimMotion":
-                  node = HAnimMotion(DEF=def_id, name=obj.name)
-                  return node
               case     "HAnimHumanoid":
+                  print(f"Exporting type {tag} {obj.type}")
                   node = HAnimHumanoid(DEF=def_id, name=obj.name, motions=motions)
                   return node
               case     "HAnimMotion":
+                  print(f"Exporting motion of {tag} {obj.type}")
                   if obj.type == 'ARMATURE':
                       armature = obj
                       bpy.context.view_layer.objects.active = armature
                       bpy.ops.object.mode_set(mode='POSE')
+                      print(f"Activated armature {armature}")
                       if armature:
                             animation_data = armature.animation_data
                             if animation_data:
+                                print(f"Exporting animation data")
                                 action = animation_data.action
                                 if action:
+                                    print(f"Exporting action")
                                     values = []
                                     for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
                                         # frame is frame number
@@ -769,7 +774,7 @@ def export(context, x3dv_export_settings):
     def b2xArmature(obj, obj_main, obj_matrix, data, world):
         armature = obj
         armature_matrix = obj_matrix
-        print(f"Info: Exporting {armature.name}, object type {armature.type}")
+        print(f"Info: Called b2xArmature, exporting {armature.name}, object type {armature.type}")
         segment_lookup = JointsSegments;
 
         # each armature needs their own hierarchy
