@@ -703,7 +703,8 @@ def export(context, x3dv_export_settings):
                           print("No armature found in the scene.")
                   else:
                       print("Object is not an armature.")
-                  return None
+                  node = HAnimMotion()
+                  return node
 
     def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature):
         matrix_fallback = mathutils.Matrix()
@@ -738,13 +739,16 @@ def export(context, x3dv_export_settings):
                                     skinCoordWeight.append(group.weight)
         
             # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
-            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_lookup[joint.name], skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
+            if not joint.name.endswith("_end"):  # exclude sites for now
+                node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_lookup[joint.name], skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
 
-            print(f"Info: Exporting joint {joint.name}")
-            for joint_child in joint_lookup[joint.name]['joint_children']:
-                child = b2xJoint(joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature) 
-                node.children.append(child)
-        return node
+                print(f"Info: Exporting joint {joint.name}")
+                for joint_child in joint_lookup[joint.name]['joint_children']:
+                    child = b2xJoint(joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature) 
+                    node.children.append(child)
+                return node
+            else:
+                return HAnimJoint()  # this shouldn't happen too often
 
 
     class HAnimNode:
