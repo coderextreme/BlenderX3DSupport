@@ -312,6 +312,7 @@ def export(context, x3dv_export_settings):
         copyright = export_settings['x3dv_copyright']
         hd = head()
         hd.children=[
+          component(name='HAnim', level=1),
           meta(content=filepath,name='filename'),
           meta(content=copyright,name='copyright'),
           meta(content='http://www.web3D.org',name='reference'),
