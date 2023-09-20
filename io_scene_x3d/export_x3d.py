@@ -34,6 +34,7 @@ H3D_VIEW_MATRIX = 'view_matrix'
 JointsSegments = {
 "humanoid_root" : "sacrum",
 "sacroiliac" : "pelvis",
+"Sacroiliac" : "pelvis",
 "l_hip" : "l_thigh",
 "l_knee" : "l_calf",
 "l_talocrural" : "l_talus",
