@@ -680,7 +680,8 @@ def export(file,
 
         writeJoints(ident, armature_parent, armature, armature_matrix, joint_lookup, segment_lookup, armature)
         for joint in armature.pose.bones:
-            fw('%s<HAnimJoint USE=%s containerField=%s/>\n' % (ident, quoteattr(joint.name), quoteattr("joints")))
+            if not joint.name.endswith("_end"):  # This is actually a site
+                fw('%s<HAnimJoint USE=%s containerField=%s/>\n' % (ident, quoteattr(joint.name), quoteattr("joints")))
         ident = writeHAnim_end(ident, "HAnimHumanoid")
         return ident
 
