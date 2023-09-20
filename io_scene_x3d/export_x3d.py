@@ -576,13 +576,13 @@ def export(file,
             fw('%s<HAnimSegment DEF="%s">\n' % (ident_step, segment_name))
             fw('%s<HAnimSite translation="%.6f %.6f %.6f">\n' % (ident_step, loc[0], loc[1], loc[2]))
             fw("%s<Transform>\n" % ident_step)
-            fw("%s<Shape>\n" % ident_step)
-            fw("%s<Appearance>\n" % ident_step)
-            fw('%s<Material diffuseColor="0 0 1">\n' % ident_step)
-            fw("%s</Material>\n" % ident_step)
-            fw("%s</Appearance>\n" % ident_step)
-            fw('%s<Box size="1 1 1"/>\n' % ident_step)
-            fw("%s</Shape>\n" % ident_step)
+            #fw("%s<Shape>\n" % ident_step)
+            #fw("%s<Appearance>\n" % ident_step)
+            #fw('%s<Material diffuseColor="0 0 1">\n' % ident_step)
+            #fw("%s</Material>\n" % ident_step)
+            #fw("%s</Appearance>\n" % ident_step)
+            #fw('%s<Box size="1 1 1"/>\n' % ident_step)
+            #fw("%s</Shape>\n" % ident_step)
             fw("%s</Transform>\n" % ident_step)
             fw("%s</HAnimSite>\n" % ident_step)
             fw('%s</HAnimSegment>\n' % ident_step)
@@ -632,7 +632,8 @@ def export(file,
                                     skinCoordWeight.append(str(group.weight))
         
             joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
-            ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint", segment_lookup[joint.name], skinCoordIndex, skinCoordWeight)
+            if not joint.name.endswith("_end"):  # This is actually a site
+                ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint", segment_lookup[joint.name], skinCoordIndex, skinCoordWeight)
 
             print(f"Info: Exporting joint {joint.name}")
             for joint_child in joint_lookup[joint.name]['joint_children']:
