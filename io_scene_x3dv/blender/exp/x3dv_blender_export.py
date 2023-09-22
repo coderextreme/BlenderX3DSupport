@@ -465,7 +465,7 @@ def export(context, x3dv_export_settings):
         copyright = export_settings['x3dv_copyright']
         hd = head()
         hd.children=[
-          component(name='HAnim', level=1),
+          component(name='HAnim', level=3),
           meta(content=filepath,name='filename'),
           meta(content=copyright,name='copyright'),
           meta(content='http://www.web3D.org',name='reference'),
@@ -676,7 +676,9 @@ def export(context, x3dv_export_settings):
                   return node
               case     "HAnimHumanoid":
                   print(f"Exporting type {tag} {obj.type}")
-                  node = HAnimHumanoid(motions=motions)
+                                        
+                  node = HAnimHumanoid(motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
+                                       motions=motions)
                   if def_id:
                       node.DEF=HANIM_DEF_PREFIX+def_id
                   if obj.name:
@@ -697,6 +699,7 @@ def export(context, x3dv_export_settings):
                                 if action:
                                     print(f"Exporting action")
                                     values = []
+                                    # numframes = range(int(action.frame_range.x), int(action.frame_range.y) + 1)
                                     for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
                                         # frame is frame number
                                         bpy.context.scene.frame_set(frame)
@@ -714,10 +717,14 @@ def export(context, x3dv_export_settings):
                                     numbones = len(armature.pose.bones)
 
                                     node = HAnimMotion(
+                                        #frameIncrement=1,
+                                        #frameIndex=0,
+                                        loop=True,
+                                        #frameDuration=0.033333,
                                         enabled=True,
                                         channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 6)]),
                                         channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation " * numbones,
-                                        joints=" ".join(bone.name for bone in armature.pose.bones),
+                                        joints=" ".join("hanim_"+bone.name for bone in armature.pose.bones),
                                         values=MFFloat(values)
                                         )
                                     return node
