@@ -825,6 +825,27 @@ def export(context, x3dv_export_settings):
                     joint_lookup[parent_name]['joint_children'].append(self)
 
 
+    def b2xFindCoordinate(x3dnode):
+        defList = []
+        children = None
+        if (isinstance(x3dnode, Group)):
+            children = x3dnode.children
+        elif (isinstance(x3dnode, Transform)):
+            children = x3dnode.children
+        elif (isinstance(x3dnode, Shape)):
+            children = [x3dnode.geometry]
+        elif (isinstance(x3dnode, IndexedFaceSet)):
+            children = [x3dnode.coord]
+        elif (isinstance(x3dnode, Coordinate)):
+            if x3dnode.DEF is not None:
+                defList.append(x3dnode.DEF)
+            else:
+                defList.append(x3dnode.name)
+        if children is not None:
+            for child in children:
+                defList = defList + b2xFindCoordinate(child) 
+        return defList
+
     def b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world):
         armature = obj
         armature_matrix = obj_matrix
@@ -1831,6 +1852,10 @@ def export(context, x3dv_export_settings):
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
                             node.skin.append(x3dnode)
+                            for coord in b2xFindCoordinate(x3dnode):
+                                if node.skinCoord is not None:
+                                    print(f"*********************WARNING, overwriting skinCoord USE {node.skinCoord.USE}")
+                                node.skinCoord = Coordinate(USE=coord) # choose the last one I guess, but warn above
                 children_processed = True
             else:
                 print("Info: Ignoring [%s], object type [%s] not handle yet" % (obj.name,obj_type))
