@@ -638,30 +638,36 @@ def export(context, x3dv_export_settings):
                   print(f"Exporting bone/{tag} {obj.name}")
                   if segment_name is None:
                       node = HAnimJoint(
-                         skinCoordIndex=skinCoordIndex,
-                         skinCoordWeight=skinCoordWeight,
                          translation=loc[:],
-                         center=center[:],
-                         rotation=rot)
+                         rotation=rot,
+                         center=center[:]
+                         )
+                      if skinCoordIndex is not None:
+                         node.skinCoordIndex = skinCoordIndex
+                      if skinCoordWeight is not None:
+                         node.skinCoordWeight = skinCoordWeight
                   else:
                       node = HAnimJoint(
-                         skinCoordIndex=skinCoordIndex,
-                         skinCoordWeight=skinCoordWeight,
                          translation=loc[:],
                          center=center[:],
                          rotation=rot,
                          children=[
                             HAnimSegment(DEF=HANIM_DEF_PREFIX+segment_name, name=segment_name, children=[
-                                HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", translation=loc[:], children=[
+                                HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", # translation=loc[:],
+                                    children=[
                                     Transform( children=[
                                         Shape(
                                             appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                                            geometry=Box(size = (1, 1, 1))
+                                            geometry=Box(size = (0.05, 0.05, 0.05))
                                         )
                                     ])
                                 ])
                             ])
                          ])
+                      if skinCoordIndex is not None:
+                         node.skinCoordIndex = skinCoordIndex
+                      if skinCoordWeight is not None:
+                         node.skinCoordWeight = skinCoordWeight
                   if def_id:
                       node.DEF=HANIM_DEF_PREFIX+def_id
                   if obj.name:
@@ -766,6 +772,8 @@ def export(context, x3dv_export_settings):
             joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
 
 
+            skinCoordIndex = []
+            skinCoordWeight = []
             for obj in bpy.data.objects:
                 if obj.type == 'MESH':
                     if obj.parent == armature:
@@ -802,7 +810,7 @@ def export(context, x3dv_export_settings):
                                     Transform( children=[
                                         Shape(
                                             appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                                            geometry=Box(size = (1, 1, 1))
+                                            geometry=Box(size = (0.05, 0.05, 0.05))
                                         )
                                     ])
                                 ])
