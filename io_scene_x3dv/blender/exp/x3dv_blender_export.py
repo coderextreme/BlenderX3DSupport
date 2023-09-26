@@ -754,7 +754,7 @@ def export(context, x3dv_export_settings):
                   node = HAnimMotion()  # fake motion
                   return node
 
-    def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature):
+    def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature, skinCoordInfo):
         matrix_fallback = mathutils.Matrix()
         world = scene.world
         if export_settings['x3dv_use_hierarchy']:
@@ -771,22 +771,29 @@ def export(context, x3dv_export_settings):
                 joint_matrix = joint_matrix_world
             joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
 
-
-            skinCoordIndex = []
-            skinCoordWeight = []
-            for obj in bpy.data.objects:
-                if obj.type == 'MESH':
-                    if obj.parent == armature:
-                        vertex_groups = obj.vertex_groups
-                        skinCoordIndex = []
-                        for vertex in obj.data.vertices:
-                            skinCoordWeight = []
-                            for group in vertex.groups:
-                                #print("Mesh", vertex_groups)
-                                # print("groups", vertex.groups)
-                                if group.group >= 0  and group.group < len(vertex_groups) and vertex_groups[group.group].name == joint.name:
-                                    skinCoordIndex.append(vertex.index)
-                                    skinCoordWeight.append(group.weight)
+            try:
+                if skinCoordInfo[joint.name] is None:
+                    skinCoordWeight = []
+                    skinCoordIndex = []
+                else:
+                    skinCoordIndex = skinCoordInfo[joint.name]['indices']
+                    skinCoordWeight = skinCoordInfo[joint.name]['weights']
+            except:
+                    skinCoordWeight = []
+                    skinCoordIndex = []
+#            for obj in bpy.data.objects:
+#                if obj.type == 'MESH':
+#                    if obj.parent == armature:
+#                        vertex_groups = obj.vertex_groups
+#                        skinCoordIndex = []
+#                        for vertex in obj.data.vertices:
+#                            skinCoordWeight = []
+#                            for group in vertex.groups:
+#                                #print("Mesh", vertex_groups)
+#                                # print("groups", vertex.groups)
+#                                if group.group >= 0  and group.group < len(vertex_groups) and vertex_groups[group.group].name == joint.name:
+#                                    skinCoordIndex.append(vertex.index)
+#                                    skinCoordWeight.append(group.weight)
         
             # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
             if not joint.name.endswith("_end"):  # exclude sites for now
@@ -798,7 +805,7 @@ def export(context, x3dv_export_settings):
 
                 print(f"Info: Exporting joint {joint.name}")
                 for joint_child in joint_lookup[joint.name]['joint_children']:
-                    child = b2xJoint(joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature)
+                    child = b2xJoint(joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)
                     node.children.append(child)
                 return node
             else:
@@ -875,7 +882,41 @@ def export(context, x3dv_export_settings):
                 joint_parent_name = armature.name
             HAnimNode(joint.name, joint_parent_name, joint, joint_lookup) # populates joint_lookup
 
-        humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature)]
+        # BEGINNNING
+        # get the names of the bones in the armature associated with the object
+        #for modifier in obj.modifiers:
+            #if modifier.type == 'ARMATURE':
+                #armature = modifier.object.data
+        armature_bones = {bone.name for bone in armature.pose.bones}
+                #break
+            
+        # get the mapping from group indices to bones
+        skinCoordInfo = {}
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH':
+                if obj.parent == armature:
+                    group_to_bone = {i: group.name for i, group in enumerate(obj.vertex_groups)}
+        
+                    # determine the bone weights associated with each vertex
+                    mesh = obj.data
+                    for vertex in mesh.vertices: ##in each vertex of the mesh
+                        print('Vertex', vertex.index)
+                        for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
+                            group_index = group.group
+                            group_bone = group_to_bone[group_index]
+                            if group_bone in armature_bones: ##if it's a bone
+                                print('\t', group_bone, group.weight)
+                                try:
+                                    if skinCoordInfo[group_bone] is None:
+                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                                except:
+                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                                skinCoordInfo[group_bone]['indices'].append(vertex.index)
+                                    
+                                skinCoordInfo[group_bone]['weights'].append(group.weight)
+                            else:
+                                print('\t', 'NOT A BONE:', group_bone, group.weight)
+        humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
         for joint in armature.pose.bones:
             if not joint.name.endswith("_end"):  # exclude sites for now
