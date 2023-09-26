@@ -1,0 +1,13 @@
+:py:mod:`JointsSegments`
+========================
+
+.. py:module:: JointsSegments
+
+
+Module Contents
+---------------
+
+.. py:data:: JointsSegments
+
+   
+
