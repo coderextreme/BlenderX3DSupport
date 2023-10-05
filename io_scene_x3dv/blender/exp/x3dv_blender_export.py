@@ -554,6 +554,7 @@ def export(context, x3dv_export_settings):
             amb_intensity = 0.0
 
         # compute cutoff and beamwidth
+        lamp = obj.data  # added by John
         intensity = min(lamp.energy / 1.75, 1.0)
         beamWidth = lamp.spot_size * 0.37
         # beamWidth=((lamp.spotSize*math.pi)/180.0)*.37
@@ -631,6 +632,8 @@ def export(context, x3dv_export_settings):
             loc, rot, sca = matrix.decompose()
             rot = rot.to_axis_angle()
             rot = (*rot[0], rot[1])
+            center = matrix.to_translation()[:]
+        else:
             center = obj.location
 
         match tag:
