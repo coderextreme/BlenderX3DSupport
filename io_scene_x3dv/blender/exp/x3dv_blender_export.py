@@ -635,15 +635,19 @@ def export(context, x3dv_export_settings):
             center = matrix.to_translation()[:]
         else:
             center = obj.location
+        newcenter = [0, 0, 0]
+        newcenter[0] = center[0]/100
+        newcenter[1] = center[1]/100
+        newcenter[2] = center[2]/100
 
         match tag:
               case     "HAnimJoint":
                   print(f"Exporting bone/{tag} {obj.name}")
                   if segment_name is None:
                       node = HAnimJoint(
-                         translation=loc[:],
-                         rotation=rot,
-                         center=center[:]
+                         #translation=loc[:],
+                         #rotation=rot,
+                         center=newcenter[:]
                          )
                       if skinCoordIndex is not None:
                          node.skinCoordIndex = skinCoordIndex
@@ -651,9 +655,9 @@ def export(context, x3dv_export_settings):
                          node.skinCoordWeight = skinCoordWeight
                   else:
                       node = HAnimJoint(
-                         translation=loc[:],
-                         center=center[:],
-                         rotation=rot,
+                         #translation=loc[:],
+                         center=newcenter[:],
+                         #rotation=rot,
                          children=[
                             HAnimSegment(DEF=HANIM_DEF_PREFIX+segment_name, name=segment_name, children=[
                                 HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", # translation=loc[:],
@@ -898,6 +902,7 @@ def export(context, x3dv_export_settings):
         # https://blenderartists.org/t/script-that-normalize-only-bones-weight-in-vertex-groups/557887
         skinCoordInfo = {}
 
+        """
         for obj in bpy.context.scene.objects:
             if obj.type == 'MESH':
                 obj.select_set(True)
@@ -960,7 +965,6 @@ def export(context, x3dv_export_settings):
 
                             # obj.vertex_groups[DictGroup[group.group]].add([vertex.index],new_weight,'REPLACE')
 
-        """
         if bpy.context.mode == 'EDIT_MESH':
             myVertex = {}
             v=0
@@ -993,7 +997,6 @@ def export(context, x3dv_export_settings):
                             skinCoordInfo[group_bone]['indices'].append(vertex.index)
                             skinCoordInfo[group_bone]['weights'].append(this_weight)
 
-        """
         bpy.ops.object.mode_set(mode='EDIT')
         for group_bone in skinCoordInfo:
             try:
@@ -1005,33 +1008,32 @@ def export(context, x3dv_export_settings):
                     print(f"({indices[i]}) = {weights[i]}")
             except:
                 pass
-        # Broken
-        #
-        #        skinCoordInfo = {}
-        #        for obj in bpy.data.objects:
-        #            if obj.type == 'MESH':
-        #                if obj.parent == armature:
-        #                    group_to_bone = {i: group.name for i, group in enumerate(obj.vertex_groups)}
-        #        
-        #                    # determine the bone weights associated with each vertex
-        #                    mesh = obj.data
-        #                    for vertex in mesh.vertices: ##in each vertex of the mesh
-        #                        print('Vertex', vertex.index)
-        #                        for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
-        #                            group_index = group.group
-        #                            group_bone = group_to_bone[group_index]
-        #                            if group_bone in armature_bones: ##if it's a bone
-        #                                print('\t', group_bone, group.weight)
-        #                                try:
-        #                                    if skinCoordInfo[group_bone] is None:
-        #                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-        #                                except:
-        #                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-        #                                skinCoordInfo[group_bone]['indices'].append(vertex.index)
-        #                                    
-        #                                skinCoordInfo[group_bone]['weights'].append(group.weight)
-        #                            else:
-        #                                print('\t', 'NOT A BONE:', group_bone, group.weight)
+        """
+        skinCoordInfo = {}
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH':
+                if obj.parent == armature:
+                    group_to_bone = {i: group.name for i, group in enumerate(obj.vertex_groups)}
+        
+                    # determine the bone weights associated with each vertex
+                    mesh = obj.data
+                    for vertex in mesh.vertices: ##in each vertex of the mesh
+                        print('Vertex', vertex.index)
+                        for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
+                            group_index = group.group
+                            group_bone = group_to_bone[group_index]
+                            if group_bone in armature_bones: ##if it's a bone
+                                print('\t', group_bone, group.weight)
+                                try:
+                                    if skinCoordInfo[group_bone] is None:
+                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                                except:
+                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                                skinCoordInfo[group_bone]['indices'].append(vertex.index)
+                                    
+                                skinCoordInfo[group_bone]['weights'].append(group.weight)
+                            else:
+                                print('\t', 'NOT A BONE:', group_bone, group.weight)
         humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
         for joint in armature.pose.bones:
