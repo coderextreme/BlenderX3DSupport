@@ -894,31 +894,144 @@ def export(context, x3dv_export_settings):
                 #break
             
         # get the mapping from group indices to bones
+        # TDOO onnly work on a one MESH file
+        # https://blenderartists.org/t/script-that-normalize-only-bones-weight-in-vertex-groups/557887
         skinCoordInfo = {}
-        for obj in bpy.data.objects:
+
+        for obj in bpy.context.scene.objects:
             if obj.type == 'MESH':
-                if obj.parent == armature:
-                    group_to_bone = {i: group.name for i, group in enumerate(obj.vertex_groups)}
-        
-                    # determine the bone weights associated with each vertex
-                    mesh = obj.data
-                    for vertex in mesh.vertices: ##in each vertex of the mesh
-                        print('Vertex', vertex.index)
-                        for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
-                            group_index = group.group
-                            group_bone = group_to_bone[group_index]
-                            if group_bone in armature_bones: ##if it's a bone
-                                print('\t', group_bone, group.weight)
-                                try:
-                                    if skinCoordInfo[group_bone] is None:
-                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-                                except:
-                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-                                skinCoordInfo[group_bone]['indices'].append(vertex.index)
-                                    
-                                skinCoordInfo[group_bone]['weights'].append(group.weight)
-                            else:
-                                print('\t', 'NOT A BONE:', group_bone, group.weight)
+                obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.mode_set(mode='OBJECT') # ('OBJECT', 'EDIT', 'SCULPT', 'VERTEX_PAINT', 'WEIGHT_PAINT', 'TEXTURE_PAINT')
+
+
+        obj = bpy.context.active_object
+        mesh = bpy.data.objects[obj.name].data
+        mesh_name = bpy.data.objects[obj.name].data.name
+        listbones = {}
+        b=0
+
+
+        ## check the armature attached to the object
+        for modifiers in bpy.data.objects[obj.name].modifiers:
+            if modifiers.type == 'ARMATURE':
+                data = bpy.data.objects[modifiers.object.name].data.name
+                for bones in bpy.data.armatures[data].bones:
+                    #print(f"Listing bones {bones.name}")
+                    listbones[bones.name] = b
+                    b+=1
+
+
+        ## create the dict for the groups attache the index to the name
+        DictGroup = {} ##ask the index it will give you the name
+
+        i=0
+        for group in bpy.context.active_object.vertex_groups:
+            #print(f"Listing group {group.name}")
+            DictGroup[i]=group.name
+            i+=1
+
+        if bpy.context.mode == 'OBJECT':
+            for vertex in bpy.data.meshes[mesh_name].vertices: ##in each vertex of the mesh
+                total_weight=0 ##where to add the total of unlock
+                space_left=1 ##goal less the locked ones
+
+                for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
+                    if DictGroup[group.group] in listbones: ##if it's a bone
+                        # group.weight
+                        # print("this is a bone " + str(DictGroup[group.group]))
+                        pass
+                    else:
+                        print("this is not a bone group " + str(DictGroup[group.group]))
+
+                for group in vertex.groups: #second on is to assign the new weight
+                    if DictGroup[group.group] in listbones:
+                        if not obj.vertex_groups[DictGroup[group.group]].lock_weight: ##if it's not locked!
+                            this_weight = group.weight
+                            # print(f"OBJECT bone {DictGroup[group.group]} index {vertex.index} weight {this_weight}")
+                            group_bone = DictGroup[group.group]
+                            try:
+                                if skinCoordInfo[group_bone] is None:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            except:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            skinCoordInfo[group_bone]['indices'].append(vertex.index)
+                            skinCoordInfo[group_bone]['weights'].append(this_weight)
+
+                            # obj.vertex_groups[DictGroup[group.group]].add([vertex.index],new_weight,'REPLACE')
+
+        """
+        if bpy.context.mode == 'EDIT_MESH':
+            myVertex = {}
+            v=0
+            bpy.ops.object.mode_set(mode='OBJECT')
+            for vertex in bpy.data.meshes[mesh_name].vertices:
+                if vertex.select==True:
+                    myVertex[v]=vertex.index
+                    v+=1
+
+            for each in myVertex:
+                for group in mesh.vertices[myVertex[each]].groups: #first loop to calculate the total weight and the space allowed if some are locked
+                    # print(group.weight)
+                    if DictGroup[group.group] in listbones: ##if it's a bone
+                        #print("this is a bone " + str(DictGroup[group.group]))
+                        pass
+                    else:
+                        print("this is not a bone group " + str(DictGroup[group.group]))
+
+                for group in mesh.vertices[myVertex[each]].groups: #second on is to assign the new weight
+                    if DictGroup[group.group] in listbones:
+                        if not obj.vertex_groups[DictGroup[group.group]].lock_weight: ##if it's not locked!
+                            this_weight = group.weight
+                            # print(f"EDIT MESH bone {DictGroup[group.group]} index {myVertex[each]} weight {this_weight}")
+                            group_bone = DictGroup[group.group]
+                            try:
+                                if skinCoordInfo[group_bone] is None:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            except:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            skinCoordInfo[group_bone]['indices'].append(vertex.index)
+                            skinCoordInfo[group_bone]['weights'].append(this_weight)
+
+        """
+        bpy.ops.object.mode_set(mode='EDIT')
+        for group_bone in skinCoordInfo:
+            try:
+                info = skinCoordInfo[group_bone]
+                print(f"\n<{group_bone}>\n")
+                indices = info['indices']
+                weights = info['weights']
+                for i in range(len(info['indices'])):
+                    print(f"({indices[i]}) = {weights[i]}")
+            except:
+                pass
+        # Broken
+        #
+        #        skinCoordInfo = {}
+        #        for obj in bpy.data.objects:
+        #            if obj.type == 'MESH':
+        #                if obj.parent == armature:
+        #                    group_to_bone = {i: group.name for i, group in enumerate(obj.vertex_groups)}
+        #        
+        #                    # determine the bone weights associated with each vertex
+        #                    mesh = obj.data
+        #                    for vertex in mesh.vertices: ##in each vertex of the mesh
+        #                        print('Vertex', vertex.index)
+        #                        for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
+        #                            group_index = group.group
+        #                            group_bone = group_to_bone[group_index]
+        #                            if group_bone in armature_bones: ##if it's a bone
+        #                                print('\t', group_bone, group.weight)
+        #                                try:
+        #                                    if skinCoordInfo[group_bone] is None:
+        #                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+        #                                except:
+        #                                        skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+        #                                skinCoordInfo[group_bone]['indices'].append(vertex.index)
+        #                                    
+        #                                skinCoordInfo[group_bone]['weights'].append(group.weight)
+        #                            else:
+        #                                print('\t', 'NOT A BONE:', group_bone, group.weight)
         humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
         for joint in armature.pose.bones:
@@ -1346,7 +1459,9 @@ def export(context, x3dv_export_settings):
                             for i in polygons_group:
                                 for lidx in mesh_polygons[i].loop_indices:
                                     #fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
-                                    texcoord.point.append(mesh_loops_uv[lidx].uv[:])
+                                    # John patch
+                                    if len(mesh_loops_uv) > 0 and len(mesh_loops_uv[lidx].uv) > 0:
+                                        texcoord.point.append(mesh_loops_uv[lidx].uv[:])
 
                         if is_col:
                             # Need better logic here, dynamic determination
