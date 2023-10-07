@@ -639,6 +639,7 @@ def export(context, x3dv_export_settings):
         newcenter[0] = center[0]/100
         newcenter[1] = center[1]/100
         newcenter[2] = center[2]/100
+        # newcenter = center
 
         match tag:
               case     "HAnimJoint":
