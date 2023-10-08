@@ -1900,7 +1900,6 @@ def export(context, x3dv_export_settings):
                     x3dnodelist = b2x_object(obj_main, obj_child, obj_child_children)
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
-                            x3dnode.scale = (0.01, 0.01, 0.01) # scale skin down for Gramps
                             node.skin.append(x3dnode)
                             for coord in b2xFindCoordinate(x3dnode):
                                 if node.skinCoord is not None:
