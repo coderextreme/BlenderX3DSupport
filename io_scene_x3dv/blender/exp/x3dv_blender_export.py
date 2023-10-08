@@ -638,7 +638,10 @@ def export(context, x3dv_export_settings):
             center = obj.location
         # finesse the whole matrix thing
         if joint_location:
-            center = (joint_location[0], joint_location[2], joint_location[1])
+            vec = mathutils.Vector((joint_location[0], joint_location[1], joint_location[2]))
+            eul = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
+            vec.rotate(eul)
+            center = (vec[0], vec[2], vec[1])
         else:
             print(f"Defalting to center {loc}")
             center = loc
