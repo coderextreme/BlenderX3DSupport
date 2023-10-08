@@ -627,14 +627,21 @@ def export(context, x3dv_export_settings):
         
         return lite
 
-    def b2xHAnimNode(obj, matrix, def_id, tag, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
+    def b2xHAnimNode(obj, matrix, def_id, tag, joint_location=None, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
         if matrix is not None:
             loc, rot, sca = matrix.decompose()
             rot = rot.to_axis_angle()
             rot = (*rot[0], rot[1])
-            center = matrix.to_translation()[:]
+            #center = matrix.to_translation()[:]
+            center = loc
         else:
             center = obj.location
+        # finesse the whole matrix thing
+        if joint_location:
+            center = (joint_location[0], joint_location[2], joint_location[1])
+        else:
+            print(f"Defalting to center {loc}")
+            center = loc
 
         match tag:
               case     "HAnimJoint":
@@ -761,32 +768,17 @@ def export(context, x3dv_export_settings):
                   return node
 
     def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature, skinCoordInfo):
-        matrix_fallback = mathutils.Matrix()
-        world = scene.world
-        if export_settings['x3dv_use_hierarchy']:
-            try:
-                joint_matrix_world = joint.matrix
-            except AttributeError:
-                joint_matrix_world = matrix
-            try:
-                if joint_parent:
-                    joint_matrix = joint_parent.matrix.inverted(matrix_fallback) @ joint_matrix_world
-                else:
-                    joint_matrix = joint_matrix_world
-            except AttributeError:
-                joint_matrix = joint_matrix_world
-            joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
-
-            try:
-                if skinCoordInfo[joint.name] is None:
-                    skinCoordWeight = []
-                    skinCoordIndex = []
-                else:
-                    skinCoordIndex = skinCoordInfo[joint.name]['indices']
-                    skinCoordWeight = skinCoordInfo[joint.name]['weights']
-            except:
-                    skinCoordWeight = []
-                    skinCoordIndex = []
+        joint_location = armature.matrix_world @ matrix @ joint.location
+        try:
+            if skinCoordInfo[joint.name] is None:
+                skinCoordWeight = []
+                skinCoordIndex = []
+            else:
+                skinCoordIndex = skinCoordInfo[joint.name]['indices']
+                skinCoordWeight = skinCoordInfo[joint.name]['weights']
+        except:
+                skinCoordWeight = []
+                skinCoordIndex = []
 #            for obj in bpy.data.objects:
 #                if obj.type == 'MESH':
 #                    if obj.parent == armature:
@@ -800,35 +792,35 @@ def export(context, x3dv_export_settings):
 #                                if group.group >= 0  and group.group < len(vertex_groups) and vertex_groups[group.group].name == joint.name:
 #                                    skinCoordIndex.append(vertex.index)
 #                                    skinCoordWeight.append(group.weight)
-        
-            # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
-            if not joint.name.endswith("_end"):  # exclude sites for now
-                try:
-                    segment_name = segment_lookup[joint.name]
-                except KeyError:
-                    segment_name = None
-                node = b2xHAnimNode(joint, joint_matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
+    
+        # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
+        if not joint.name.endswith("_end"):  # exclude sites for now
+            try:
+                segment_name = segment_lookup[joint.name]
+            except KeyError:
+                segment_name = None
+            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight, joint_location=joint_location)
 
-                for joint_child in joint_lookup[joint.name]['joint_children']:
-                    child = b2xJoint(joint, joint_child.joint, joint_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)
-                    node.children.append(child)
-                return node
-            else:
-                site_name = joint.name
-                return HAnimJoint(
-                         children=[
-                            HAnimSegment(DEF=HANIM_DEF_PREFIX+"SEGMENT_FOR_"+site_name, name="SEGMENT_FOR_"+site_name, children=[
-                                HAnimSite(DEF=HANIM_DEF_PREFIX+site_name, name=site_name, children=[
-                                    Transform( children=[
-                                        Shape(
-                                            USE="HAnimSiteShape"
-                                            #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                                            #geometry=Box(size = (0.05, 0.05, 0.05))
-                                        )
-                                    ])
+            for joint_child in joint_lookup[joint.name]['joint_children']:
+                child = b2xJoint(joint, joint_child.joint, joint_child.joint.matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)
+                node.children.append(child)
+            return node
+        else:
+            site_name = joint.name
+            return HAnimJoint(
+                     children=[
+                        HAnimSegment(DEF=HANIM_DEF_PREFIX+"SEGMENT_FOR_"+site_name, name="SEGMENT_FOR_"+site_name, children=[
+                            HAnimSite(DEF=HANIM_DEF_PREFIX+site_name, name=site_name, children=[
+                                Transform( children=[
+                                    Shape(
+                                        USE="HAnimSiteShape"
+                                        #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+                                        #geometry=Box(size = (0.05, 0.05, 0.05))
+                                    )
                                 ])
                             ])
-                         ])
+                        ])
+                     ])
 
 
     class HAnimNode:
@@ -882,11 +874,13 @@ def export(context, x3dv_export_settings):
         humanoid = b2xHAnimNode(armature, armature_matrix, "armature_"+armature.name, "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
         for joint in armature.pose.bones:
+            # joint_location = armature.matrix_world * joint.matrix * joint.location
             if joint.parent:
                 joint_parent_name = joint.parent.name
             else:
                 joint_parent_name = armature.name
             HAnimNode(joint.name, joint_parent_name, joint, joint_lookup) # populates joint_lookup
+
 
         # BEGINNNING
         # get the names of the bones in the armature associated with the object
@@ -922,7 +916,7 @@ def export(context, x3dv_export_settings):
                                 skinCoordInfo[group_bone]['weights'].append(group.weight)
                             else:
                                 print('\t', 'NOT A BONE:', group_bone, group.weight)
-        humanoid.skeleton = [b2xJoint(obj_main, armature, obj_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
+        humanoid.skeleton = [b2xJoint(obj_main, armature, armature_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
         for joint in armature.pose.bones:
             if not joint.name.endswith("_end"):  # exclude sites for now
