@@ -627,7 +627,7 @@ def export(context, x3dv_export_settings):
         
         return lite
 
-    def b2xHAnimNode(obj, matrix, def_id, tag, joint_location=None, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
+    def b2xHAnimNode(obj, matrix, def_id, tag, joint_location=None, parent_joint_location=None, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
         if matrix is not None:
             loc, rot, sca = matrix.decompose()
             rot = rot.to_axis_angle()
@@ -638,10 +638,15 @@ def export(context, x3dv_export_settings):
             center = obj.location
         # finesse the whole matrix thing
         if joint_location:
-            vec = mathutils.Vector((joint_location[0], joint_location[1], joint_location[2]))
-            eul = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
-            vec.rotate(eul)
-            center = (vec[0], vec[2], vec[1])
+            vec = mathutils.Vector((joint_location[0], joint_location[1], joint_location[2]))  # in Blender space
+            #vec = mathutils.Vector((joint_location[0]/100, joint_location[1]/100, joint_location[2]/100))  # in Blender space
+            parvec = mathutils.Vector((parent_joint_location[0], parent_joint_location[1], parent_joint_location[2]))  # in Blender space
+            #parvec = mathutils.Vector((parent_joint_location[0]/100, parent_joint_location[1]/100, parent_joint_location[2]/100))  # in Blender space
+            #eul = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
+            #vec.rotate(eul)
+            #parvec.rotate(eul)
+            center = (vec[0], vec[2], vec[1])  # in X3D space
+            parcenter = (parvec[0], parvec[2], parvec[1])  # in X3D space
         else:
             print(f"Defalting to center {loc}")
             center = loc
@@ -666,6 +671,19 @@ def export(context, x3dv_export_settings):
                          center=center[:],
                          children=[
                             HAnimSegment(DEF=HANIM_DEF_PREFIX+segment_name, name=segment_name, children=[
+                                TouchSensor(description=f"HAnimJoint {def_id} HAnimSegment {segment_name}"),
+                                Transform(translation=center[:],
+                                          children=[
+                                            Shape(
+                                                USE="HAnimJointShape"
+                                            )
+                                        ]),
+                                Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
+                                      geometry=LineSet(
+                                        vertexCount=2,
+                                        coord=Coordinate(point=[parcenter[:],center[:]]),
+                                        color=Color(color=MFColor([(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)]))
+                                      )),
                                 HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", # translation=loc[:],
                                     children=[
                                     Transform(
@@ -772,6 +790,7 @@ def export(context, x3dv_export_settings):
 
     def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature, skinCoordInfo):
         joint_location = armature.matrix_world @ matrix @ joint.location
+        parent_joint_location = armature.matrix_world @ matrix @ joint_parent.location
         try:
             if skinCoordInfo[joint.name] is None:
                 skinCoordWeight = []
@@ -802,7 +821,7 @@ def export(context, x3dv_export_settings):
                 segment_name = segment_lookup[joint.name]
             except KeyError:
                 segment_name = None
-            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight, joint_location=joint_location)
+            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight, joint_location=joint_location, parent_joint_location=parent_joint_location)
 
             for joint_child in joint_lookup[joint.name]['joint_children']:
                 child = b2xJoint(joint, joint_child.joint, joint_child.joint.matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)
@@ -877,7 +896,6 @@ def export(context, x3dv_export_settings):
         humanoid = b2xHAnimNode(armature, armature_matrix, "armature_"+armature.name, "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
         for joint in armature.pose.bones:
-            # joint_location = armature.matrix_world * joint.matrix * joint.location
             if joint.parent:
                 joint_parent_name = joint.parent.name
             else:
@@ -893,6 +911,118 @@ def export(context, x3dv_export_settings):
         armature_bones = {bone.name for bone in armature.pose.bones}
                 #break
             
+        """
+        # get the mapping from group indices to bones
+        # TDOO onnly work on a one MESH file
+        # https://blenderartists.org/t/script-that-normalize-only-bones-weight-in-vertex-groups/557887
+        skinCoordInfo = {}
+
+        for obj in bpy.context.scene.objects:
+            if obj.type == 'MESH':
+                obj.select_set(True)
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.mode_set(mode='OBJECT') # ('OBJECT', 'EDIT', 'SCULPT', 'VERTEX_PAINT', 'WEIGHT_PAINT', 'TEXTURE_PAINT')
+
+
+        obj = bpy.context.active_object
+        mesh = bpy.data.objects[obj.name].data
+        mesh_name = bpy.data.objects[obj.name].data.name
+        listbones = {}
+        b=0
+
+
+        ## check the armature attached to the object
+        for modifiers in bpy.data.objects[obj.name].modifiers:
+            if modifiers.type == 'ARMATURE':
+                data = bpy.data.objects[modifiers.object.name].data.name
+                for bones in bpy.data.armatures[data].bones:
+                    #print(f"Listing bones {bones.name}")
+                    listbones[bones.name] = b
+                    b+=1
+
+
+        ## create the dict for the groups attache the index to the name
+        DictGroup = {} ##ask the index it will give you the name
+
+        i=0
+        for group in bpy.context.active_object.vertex_groups:
+            #print(f"Listing group {group.name}")
+            DictGroup[i]=group.name
+            i+=1
+
+        if bpy.context.mode == 'OBJECT':
+            for vertex in bpy.data.meshes[mesh_name].vertices: ##in each vertex of the mesh
+                total_weight=0 ##where to add the total of unlock
+                space_left=1 ##goal less the locked ones
+
+                for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
+                    if DictGroup[group.group] in listbones: ##if it's a bone
+                        # group.weight
+                        # print("this is a bone " + str(DictGroup[group.group]))
+                        pass
+                    else:
+                        print("this is not a bone group " + str(DictGroup[group.group]))
+
+                for group in vertex.groups: #second on is to assign the new weight
+                    if DictGroup[group.group] in listbones:
+                        if not obj.vertex_groups[DictGroup[group.group]].lock_weight: ##if it's not locked!
+                            this_weight = group.weight
+                            # print(f"OBJECT bone {DictGroup[group.group]} index {vertex.index} weight {this_weight}")
+                            group_bone = DictGroup[group.group]
+                            try:
+                                if skinCoordInfo[group_bone] is None:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            except:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            skinCoordInfo[group_bone]['indices'].append(vertex.index)
+                            skinCoordInfo[group_bone]['weights'].append(this_weight)
+
+                            # obj.vertex_groups[DictGroup[group.group]].add([vertex.index],new_weight,'REPLACE')
+
+        if bpy.context.mode == 'EDIT_MESH':
+            myVertex = {}
+            v=0
+            bpy.ops.object.mode_set(mode='OBJECT')
+            for vertex in bpy.data.meshes[mesh_name].vertices:
+                if vertex.select==True:
+                    myVertex[v]=vertex.index
+                    v+=1
+
+            for each in myVertex:
+                for group in mesh.vertices[myVertex[each]].groups: #first loop to calculate the total weight and the space allowed if some are locked
+                    # print(group.weight)
+                    if DictGroup[group.group] in listbones: ##if it's a bone
+                        #print("this is a bone " + str(DictGroup[group.group]))
+                        pass
+                    else:
+                        print("this is not a bone group " + str(DictGroup[group.group]))
+
+                for group in mesh.vertices[myVertex[each]].groups: #second on is to assign the new weight
+                    if DictGroup[group.group] in listbones:
+                        if not obj.vertex_groups[DictGroup[group.group]].lock_weight: ##if it's not locked!
+                            this_weight = group.weight
+                            # print(f"EDIT MESH bone {DictGroup[group.group]} index {myVertex[each]} weight {this_weight}")
+                            group_bone = DictGroup[group.group]
+                            try:
+                                if skinCoordInfo[group_bone] is None:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            except:
+                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
+                            skinCoordInfo[group_bone]['indices'].append(vertex.index)
+                            skinCoordInfo[group_bone]['weights'].append(this_weight)
+
+        bpy.ops.object.mode_set(mode='EDIT')
+        for group_bone in skinCoordInfo:
+            try:
+                info = skinCoordInfo[group_bone]
+                print(f"\n<{group_bone}>\n")
+                indices = info['indices']
+                weights = info['weights']
+                for i in range(len(info['indices'])):
+                    print(f"({indices[i]}) = {weights[i]}")
+            except:
+                pass
+        """
         # get the mapping from group indices to bones
         skinCoordInfo = {}
         for obj in bpy.data.objects:
@@ -1345,8 +1475,10 @@ def export(context, x3dv_export_settings):
                             ifs.texCoord = texcoord
                             for i in polygons_group:
                                 for lidx in mesh_polygons[i].loop_indices:
-                                    #fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
-                                    texcoord.point.append(mesh_loops_uv[lidx].uv[:])
+                                    # John patch
+                                    if len(mesh_loops_uv) > 0:
+                                        #fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
+                                        texcoord.point.append(mesh_loops_uv[lidx].uv[:])
 
                         if is_col:
                             # Need better logic here, dynamic determination
@@ -1903,6 +2035,7 @@ def export(context, x3dv_export_settings):
                     x3dnodelist = b2x_object(obj_main, obj_child, obj_child_children)
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
+                            # x3dnode.scale = (0.01, 0.01, 0.01) # scale skin down for Gramps
                             node.skin.append(x3dnode)
                             for coord in b2xFindCoordinate(x3dnode):
                                 if node.skinCoord is not None:
@@ -1973,6 +2106,20 @@ def export(context, x3dv_export_settings):
                         material=Material(
                             diffuseColor = (0, 0, 1),
                             transparency = 0
+                        ))
+                )
+            ])
+        )
+        x3dmodel.Scene.children.append(
+            Transform( children=[
+                Shape(
+                    DEF="HAnimJointShape",
+                    geometry=Sphere(radius=0.06),
+                    appearance=Appearance(
+                        DEF="HAnimJointAppearance",
+                        material=Material(
+                            diffuseColor = (1, 0.5, 0),
+                            transparency = 0.5
                         ))
                 )
             ])
