@@ -627,33 +627,27 @@ def export(context, x3dv_export_settings):
         
         return lite
 
-    def b2xHAnimNode(obj, matrix, def_id, tag, joint_location=None, parent_joint_location=None, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
-        if matrix is not None:
-            loc, rot, sca = matrix.decompose()
-            rot = rot.to_axis_angle()
-            rot = (*rot[0], rot[1])
-            #center = matrix.to_translation()[:]
-            center = loc
-        else:
-            center = obj.location
-        # finesse the whole matrix thing
-        if joint_location:
-            vec = mathutils.Vector((joint_location[0], joint_location[1], joint_location[2]))  # in Blender space
-            #vec = mathutils.Vector((joint_location[0]/100, joint_location[1]/100, joint_location[2]/100))  # in Blender space
-            parvec = mathutils.Vector((parent_joint_location[0], parent_joint_location[1], parent_joint_location[2]))  # in Blender space
-            #parvec = mathutils.Vector((parent_joint_location[0]/100, parent_joint_location[1]/100, parent_joint_location[2]/100))  # in Blender space
-            #eul = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
-            #vec.rotate(eul)
-            #parvec.rotate(eul)
-            center = (vec[0], vec[2], vec[1])  # in X3D space
-            parcenter = (parvec[0], parvec[2], parvec[1])  # in X3D space
-        else:
-            print(f"Defalting to center {loc}")
-            center = loc
+    def b2xHAnimNode(obj, matrix, def_id, tag, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
+        #if matrix is not None:
+        #    loc, rot, sca = matrix.decompose()
+        #    rot = rot.to_axis_angle()
+        #    rot = (*rot[0], rot[1])
+        #    #center = matrix.to_translation()[:]
+        #    center = loc
 
         match tag:
               case     "HAnimJoint":
                   print(f"Exporting joint {tag} {obj.name}")
+                  try:
+                      center = obj.head_local
+                      chicenter = obj.tail_local
+                  except AttributeError:
+                      center = [0, 0, 0]
+                      chicenter = [0, 0, 0]
+                  vec = mathutils.Vector((center[0], center[1], center[2]))  # in Blender space
+                  center = (vec[0], vec[2], vec[1])  # in X3D space
+                  chivec = mathutils.Vector((chicenter[0], chicenter[1], chicenter[2]))  # in Blender space
+                  chicenter = (chivec[0], chivec[2], chivec[1])  # in X3D space
                   if segment_name is None:
                       node = HAnimJoint(
                          #translation=loc[:],
@@ -681,7 +675,7 @@ def export(context, x3dv_export_settings):
                                 Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
                                       geometry=LineSet(
                                         vertexCount=2,
-                                        coord=Coordinate(point=[parcenter[:],center[:]]),
+                                        coord=Coordinate(point=[center[:],chicenter[:]]),
                                         color=Color(color=MFColor([(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)]))
                                       )),
                                 HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", # translation=loc[:],
@@ -789,8 +783,7 @@ def export(context, x3dv_export_settings):
                   return node
 
     def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature, skinCoordInfo):
-        joint_location = armature.matrix_world @ matrix @ joint.location
-        parent_joint_location = armature.matrix_world @ matrix @ joint_parent.location
+        print(f"joint {joint}")
         try:
             if skinCoordInfo[joint.name] is None:
                 skinCoordWeight = []
@@ -821,7 +814,7 @@ def export(context, x3dv_export_settings):
                 segment_name = segment_lookup[joint.name]
             except KeyError:
                 segment_name = None
-            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight, joint_location=joint_location, parent_joint_location=parent_joint_location)
+            node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
 
             for joint_child in joint_lookup[joint.name]['joint_children']:
                 child = b2xJoint(joint, joint_child.joint, joint_child.joint.matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)
@@ -889,13 +882,13 @@ def export(context, x3dv_export_settings):
 
         # each armature needs their own hierarchy
         joint_lookup = {}
-        #bpy.context.view_layer.objects.active = armature
-        #bpy.ops.object.mode_set(mode='POSE')  # could be 'POSE' or 'OBJECT'
+        bpy.context.view_layer.objects.active = armature
+        bpy.ops.object.mode_set(mode='OBJECT')
         #armature_id = quoteattr(HANIM_DEF_PREFIX+armature.parent.name)
         motions = [b2xHAnimNode(armature, armature_matrix, "motions_"+armature.name, "HAnimMotion")]
         humanoid = b2xHAnimNode(armature, armature_matrix, "armature_"+armature.name, "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
-        for joint in armature.pose.bones:
+        for joint in armature.data.bones:
             if joint.parent:
                 joint_parent_name = joint.parent.name
             else:
@@ -908,7 +901,7 @@ def export(context, x3dv_export_settings):
         #for modifier in obj.modifiers:
             #if modifier.type == 'ARMATURE':
                 #armature = modifier.object.data
-        armature_bones = {bone.name for bone in armature.pose.bones}
+        armature_bones = {bone.name for bone in armature.data.bones}
                 #break
             
         """
@@ -1051,7 +1044,7 @@ def export(context, x3dv_export_settings):
                                 print('\t', 'NOT A BONE:', group_bone, group.weight)
         humanoid.skeleton = [b2xJoint(obj_main, armature, armature_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
-        for joint in armature.pose.bones:
+        for joint in armature.data.bones:
             if not joint.name.endswith("_end"):  # exclude sites for now
                 node = HAnimJoint(USE=HANIM_DEF_PREFIX+joint.name)
                 humanoid.joints.append(node)
