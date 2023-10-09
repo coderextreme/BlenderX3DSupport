@@ -644,9 +644,16 @@ def export(context, x3dv_export_settings):
                   except AttributeError:
                       center = [0, 0, 0]
                       chicenter = [0, 0, 0]
+                  eul = mathutils.Euler((math.radians(90.0), 0.0, 0.0), 'XYZ')
+                  # eul2 = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
+
                   vec = mathutils.Vector((center[0], center[1], center[2]))  # in Blender space
+                  vec.rotate(eul)
+                  # vec.rotate(eul2)
                   center = (vec[0], vec[2], vec[1])  # in X3D space
+
                   chivec = mathutils.Vector((chicenter[0], chicenter[1], chicenter[2]))  # in Blender space
+                  chivec.rotate(eul)
                   chicenter = (chivec[0], chivec[2], chivec[1])  # in X3D space
                   if segment_name is None:
                       node = HAnimJoint(
@@ -665,26 +672,26 @@ def export(context, x3dv_export_settings):
                          center=center[:],
                          children=[
                             HAnimSegment(DEF=HANIM_DEF_PREFIX+segment_name, name=segment_name, children=[
-                                TouchSensor(description=f"HAnimJoint {def_id} HAnimSegment {segment_name}"),
+                                TouchSensor(description=f"joint {def_id} segment {segment_name}"),
                                 Transform(translation=center[:],
                                           children=[
                                             Shape(
-                                                USE="HAnimJointShape"
+                                                USE="JointShape"
                                             )
                                         ]),
                                 Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
                                       geometry=LineSet(
                                         vertexCount=2,
                                         coord=Coordinate(point=[center[:],chicenter[:]]),
-                                        color=Color(color=MFColor([(0.0, 1.0, 0.0), (1.0, 0.0, 0.0)]))
+                                        color=ColorRGBA(USE='SegmentLineColor')
                                       )),
                                 HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", # translation=loc[:],
                                     children=[
                                     Transform(
-                                        translation=center[:],
+                                        translation=chicenter[:],
                                         children=[
                                         Shape(
-                                            USE="HAnimSiteShape"
+                                            USE="SiteShape"
                                             #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
                                             #geometry=Box(size = (0.05, 0.05, 0.05))
                                         )
@@ -828,7 +835,7 @@ def export(context, x3dv_export_settings):
                             HAnimSite(DEF=HANIM_DEF_PREFIX+site_name, name=site_name, children=[
                                 Transform( children=[
                                     Shape(
-                                        USE="HAnimSiteShape"
+                                        USE="SiteShape"
                                         #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
                                         #geometry=Box(size = (0.05, 0.05, 0.05))
                                     )
@@ -2028,7 +2035,7 @@ def export(context, x3dv_export_settings):
                     x3dnodelist = b2x_object(obj_main, obj_child, obj_child_children)
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
-                            # x3dnode.scale = (0.01, 0.01, 0.01) # scale skin down for Gramps
+                            x3dnode.rotation = (0, 1, 0, 3.1416) # scale skin down for Gramps
                             node.skin.append(x3dnode)
                             for coord in b2xFindCoordinate(x3dnode):
                                 if node.skinCoord is not None:
@@ -2093,7 +2100,7 @@ def export(context, x3dv_export_settings):
         x3dmodel.Scene.children.append(
             Transform( children=[
                 Shape(
-                    DEF="HAnimSiteShape",
+                    DEF="SiteShape",
                     geometry=Box(size = (0.05, 0.05, 0.05)),
                     appearance=Appearance(
                         material=Material(
@@ -2105,11 +2112,24 @@ def export(context, x3dv_export_settings):
         )
         x3dmodel.Scene.children.append(
             Transform( children=[
+                Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
+                      geometry=LineSet(
+                        vertexCount=2,
+                        coord=Coordinate(point=MFVec3f([(0, 0, 0), (0, 0, 0)])),
+                        color=ColorRGBA(
+                            DEF='SegmentLineColor',
+                            color=MFColorRGBA([(1.0, 1.0, 1.0, 0.0), (1.0, 1.0, 1.0, 0.0)])
+                        )
+                ))
+            ])
+        )
+        x3dmodel.Scene.children.append(
+            Transform( children=[
                 Shape(
-                    DEF="HAnimJointShape",
+                    DEF="JointShape",
                     geometry=Sphere(radius=0.06),
                     appearance=Appearance(
-                        DEF="HAnimJointAppearance",
+                        DEF="JointAppearance",
                         material=Material(
                             diffuseColor = (1, 0.5, 0),
                             transparency = 0.5
