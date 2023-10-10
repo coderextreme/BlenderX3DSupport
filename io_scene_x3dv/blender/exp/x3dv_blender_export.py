@@ -644,17 +644,17 @@ def export(context, x3dv_export_settings):
                   except AttributeError:
                       center = [0, 0, 0]
                       chicenter = [0, 0, 0]
-                  eul = mathutils.Euler((math.radians(90.0), 0.0, 0.0), 'XYZ')
+                  # eul = mathutils.Euler((math.radians(90.0), 0.0, 0.0), 'XYZ')
                   # eul2 = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
 
                   vec = mathutils.Vector((center[0], center[1], center[2]))  # in Blender space
-                  vec.rotate(eul)
+                  #vec.rotate(eul)
                   # vec.rotate(eul2)
-                  center = (vec[0], vec[2], vec[1])  # in X3D space
+                  center = (vec[0], vec[1], vec[2])  # in X3D space
 
                   chivec = mathutils.Vector((chicenter[0], chicenter[1], chicenter[2]))  # in Blender space
-                  chivec.rotate(eul)
-                  chicenter = (chivec[0], chivec[2], chivec[1])  # in X3D space
+                  #chivec.rotate(eul)
+                  chicenter = (chivec[0], chivec[1], chivec[2])  # in X3D space
                   if segment_name is None:
                       node = HAnimJoint(
                          #translation=loc[:],
@@ -679,12 +679,12 @@ def export(context, x3dv_export_settings):
                                                 USE="JointShape"
                                             )
                                         ]),
-                                Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
-                                      geometry=LineSet(
-                                        vertexCount=2,
-                                        coord=Coordinate(point=[center[:],chicenter[:]]),
-                                        color=ColorRGBA(USE='SegmentLineColor')
-                                      )),
+                                #Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
+                                #      geometry=LineSet(
+                                #        vertexCount=2,
+                                #        coord=Coordinate(point=[center[:],chicenter[:]]),
+                                #        color=ColorRGBA(USE='SegmentLineColor')
+                                #      )),
                                 HAnimSite(DEF=HANIM_DEF_PREFIX+segment_name+"_pt", name=segment_name+"_pt", # translation=loc[:],
                                     children=[
                                     Transform(
@@ -756,11 +756,11 @@ def export(context, x3dv_export_settings):
                                         print(f"Exporting frame {frame}")
                                         for bone in armature.pose.bones:
                                             values.append(bone.location[0]) # location
-                                            values.append(bone.location[1]) # location
-                                            values.append(bone.location[2]) # location
-                                            values.append(bone.rotation_euler[0]) # rotation_euler
-                                            values.append(bone.rotation_euler[1]) # rotation_euler
-                                            values.append(bone.rotation_euler[2]) # rotation_euler
+                                            values.append(bone.location[2]) # location  reverse Y and Z for X3D
+                                            values.append(bone.location[1]) # location  reverse Y and Z for X3D
+                                            values.append(bone.rotation_euler[0]*3.141592654/180) # rotation_euler
+                                            values.append(bone.rotation_euler[1]*3.141592654/180) # rotation_euler
+                                            values.append(bone.rotation_euler[2]*3.141592654/180) # rotation_euler
                                             # values.append(bone.scale[0]) # scale
                                             # values.append(bone.scale[1]) # scale
                                             # values.append(bone.scale[2]) # scale
@@ -1458,6 +1458,10 @@ def export(context, x3dv_export_settings):
                                 ifs.coord = coord
                                 for v in mesh.vertices:
                                     #fw('%.6f %.6f %.6f ' % v.co[:])
+                                    #ifs.coord.point.append(v.co[:])
+                                    v.co[0] = v.co[0]
+                                    v.co[1] = v.co[1]
+                                    v.co[2] = -v.co[2]
                                     ifs.coord.point.append(v.co[:])
 
                                 is_coords_written = True
@@ -2110,19 +2114,19 @@ def export(context, x3dv_export_settings):
                 )
             ])
         )
-        x3dmodel.Scene.children.append(
-            Transform( children=[
-                Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
-                      geometry=LineSet(
-                        vertexCount=2,
-                        coord=Coordinate(point=MFVec3f([(0, 0, 0), (0, 0, 0)])),
-                        color=ColorRGBA(
-                            DEF='SegmentLineColor',
-                            color=MFColorRGBA([(1.0, 1.0, 1.0, 0.0), (1.0, 1.0, 1.0, 0.0)])
-                        )
-                ))
-            ])
-        )
+        #x3dmodel.Scene.children.append(
+        #    Transform( children=[
+        #        Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
+        #              geometry=LineSet(
+        #                vertexCount=2,
+        #                coord=Coordinate(point=MFVec3f([(0, 0, 0), (0, 0, 0)])),
+        #                color=ColorRGBA(
+        #                    DEF='SegmentLineColor',
+        #                    color=MFColorRGBA([(1.0, 1.0, 1.0, 0.0), (1.0, 1.0, 1.0, 0.0)])
+        #                )
+        #        ))
+        #    ])
+        #)
         x3dmodel.Scene.children.append(
             Transform( children=[
                 Shape(
