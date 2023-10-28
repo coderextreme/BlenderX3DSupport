@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: Apache-2.0)
 # Copyright 2023 The x3dv-Blender-IO authors.
 # Contributors: bart:neeneenee*de, http://www.neeneenee.de/vrml, Campbell Barton
 """
@@ -26,7 +26,12 @@ import os
 import mathutils
 import random
 
+from .export_bvh import write_animation
+
 from bpy_extras.io_utils import create_derived_objects
+
+from .RoundArray import round_array, round_array_no_unit_scale
+from .GetSceneScale import getscenescale
 
 JointsSegments = {
 "humanoid_root" : "sacrum",
@@ -185,7 +190,6 @@ H3D_CAMERA_FOLLOW = 'CAMERA_FOLLOW_TRANSFORM'
 H3D_VIEW_MATRIX = 'view_matrix'
 
 HANIM_DEF_PREFIX = 'hanim_'
-
 
 def clamp_color(col):
     return tuple([max(min(c, 1.0), 0.0) for c in col])
@@ -377,6 +381,7 @@ def export(context, x3dv_export_settings):
            use_h3d=False,
            path_mode='AUTO',
            name_decorations=True,
+           round_precision=16
            ):
     """
     export_settings = x3dv_export_settings
@@ -486,8 +491,11 @@ def export(context, x3dv_export_settings):
         blender_ver = 'Blender %s' % bpy.app.version_string
         copyright = export_settings['x3dv_copyright']
         hd = head()
+
+    
         hd.children=[
           component(name='HAnim', level=3),
+          unit(category='length', conversionFactor=getscenescale(bpy.context.scene), name=scene.unit_settings.length_unit),
           meta(content=filepath,name='filename'),
           meta(content=copyright,name='copyright'),
           meta(content='http://www.web3D.org',name='reference'),
@@ -556,9 +564,9 @@ def export(context, x3dv_export_settings):
         trans = Transform()
         if def_id is not None:
             trans.DEF = def_id
-        trans.translation = (loc[:])
-        trans.scale = (sca[:])
-        trans.rotation = rot
+        trans.translation = round_array(loc[:])
+        trans.scale = round_array_no_unit_scale(sca[:])
+        trans.rotation = round_array_no_unit_scale(rot)
         return trans
 
 
@@ -653,44 +661,45 @@ def export(context, x3dv_export_settings):
               case     "HAnimJoint":
                   print(f"Exporting joint {tag} {obj.name}")
                   try:
-                      obj_matrix = obj.matrix_local
-                      if obj_matrix is not None:
-                          loc, rot, sca = obj_matrix.decompose()
-                          rot = rot.to_axis_angle()
-                          rot = (*rot[0], rot[1])
+                      #obj_matrix = obj.matrix_local
+                      #if obj_matrix is not None:
+                      #    loc, rot, sca = obj_matrix.decompose()
+                      #    rot = rot.to_axis_angle()
+                      #    rot = (*rot[0], rot[1])
                       #center = matrix.to_translation()[:]
                       center = obj.head_local
                       chicenter = obj.tail_local
                   except AttributeError:
                       center = [0, 0, 0]
                       chicenter = [0, 0, 0]
-                  # eul = mathutils.Euler((math.radians(90.0), 0.0, 0.0), 'XYZ')
-                  # eul2 = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XYZ')
+                  # eul = mathutils.Euler((math.radians(90.0), 0.0, 0.0), 'XZY')
+                  # eul2 = mathutils.Euler((0.0, 0.0, math.radians(180.0)), 'XZY')
 
                   vec = mathutils.Vector((center[0], center[1], center[2]))  # in Blender space
                   #vec.rotate(eul)
                   # vec.rotate(eul2)
-                  center = (vec[0]*lengthUnitConversion, vec[1]*lengthUnitConversion, vec[2]*lengthUnitConversion)  # in X3D space
+                  center = round_array(vec)  # in X3D space
 
                   chivec = mathutils.Vector((chicenter[0], chicenter[1], chicenter[2]))  # in Blender space
                   #chivec.rotate(eul)
-                  chicenter = (chivec[0]*lengthUnitConversion, chivec[1]*lengthUnitConversion, chivec[2]*lengthUnitConversion)  # in X3D space
+                  chicenter = round_array(chivec)  # in X3D space
+                  print(f"center {center[:]}")
                   if segment_name is None:
                       node = HAnimJoint(
-                         translation=loc[:],
-                         rotation=rot,
-                         scale=sca[:],
+                         #translation=loc[:],
+                         #rotation=rot,
+                         #scale=sca[:],
                          center=center[:]
                          )
                       if skinCoordIndex is not None:
                          node.skinCoordIndex = skinCoordIndex
                       if skinCoordWeight is not None:
-                         node.skinCoordWeight = skinCoordWeight
+                         node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   else:
                       site = HAnimSite(# translation=loc[:],
                                 children=[
                                 Transform(
-                                    translation=chicenter[:],
+                                    translation=center[:],
                                     children=[
                                     Shape(
                                         USE="SiteShape"
@@ -699,7 +708,7 @@ def export(context, x3dv_export_settings):
                                     )
                                 ])
                             ])
-                      setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_pt", site)
+                      setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_tip", site)
                       segment = HAnimSegment(children=[
                           TouchSensor(description=f"joint {obj.name} segment {segment_name}"),
                           Transform(translation=center[:],
@@ -718,9 +727,9 @@ def export(context, x3dv_export_settings):
                         ])
                       setUSEDEF(HANIM_DEF_PREFIX, segment_name, segment)
                       node = HAnimJoint(
-                         translation=loc[:],
-                         rotation=rot,
-                         scale=sca[:],
+                         #translation=loc[:],
+                         #rotation=rot,
+                         #scale=sca[:],
                          center=center[:],
                          children=[
                              segment
@@ -728,7 +737,7 @@ def export(context, x3dv_export_settings):
                       if skinCoordIndex is not None:
                          node.skinCoordIndex = skinCoordIndex
                       if skinCoordWeight is not None:
-                         node.skinCoordWeight = skinCoordWeight
+                         node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimSegment":
@@ -744,9 +753,14 @@ def export(context, x3dv_export_settings):
               case     "HAnimHumanoid":
                   print(f"Exporting type {tag} {obj.type}")
                                         
-                  node = HAnimHumanoid(motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
-                                       motions=motions)
-                  setUSEDEF(HANIM_DEF_PREFIX, name, node)
+                  if motions and motions[0] is not None:
+                      print(f"{motions}")
+                      node = HAnimHumanoid(motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
+                                           motions=motions)
+                      setUSEDEF(HANIM_DEF_PREFIX, name, node)
+                  else:
+                      node = HAnimHumanoid()
+                      setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimInterpolators":
                   print(f"Exporting interpolators of {tag} {obj.type}")
@@ -764,10 +778,6 @@ def export(context, x3dv_export_settings):
                                 if action:
                                     numbones = len(armature.pose.bones)
                                     frame_range = action.frame_range
-                                    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
-
-                                    keyframe_time = 0
-
                                     time_sensor = TimeSensor(cycleInterval=(frame_range[1] - frame_range[0]), loop=True, enabled=True)
                                     clock_name = name+"_Clock"
                                     setUSEDEF(clock_name, None, time_sensor)
@@ -784,21 +794,24 @@ def export(context, x3dv_export_settings):
                                     orientationInterpolators = []
                                     positionRoutes = []
                                     orientationRoutes = []
+                                    root_found = False
                                     for b in range(numbones):
                                         bone = armature.pose.bones[b]
-                                        posInterp = PositionInterpolator()
-                                        setUSEDEF(name+"_PI_", bone.name, posInterp)
-                                        positionInterpolators.append(posInterp)
-                                        positionRoutes.append(ROUTE(
-                                            fromNode=clock_name,
-                                            fromField="fraction_changed",
-                                            toNode=name+"_PI_"+bone.name,
-                                            toField="set_fraction"))
-                                        positionRoutes.append(ROUTE(
-                                            fromNode=name+"_PI_"+bone.name,
-                                            fromField="value_changed",
+                                        if bone.name == 'humanoid_root':
+                                            posInterp = PositionInterpolator()
+                                            setUSEDEF(name+"_PI_", bone.name, posInterp)
+                                            positionInterpolators.append(posInterp)
+                                            positionRoutes.append(ROUTE(
+                                                fromNode=clock_name,
+                                                fromField="fraction_changed",
+                                                toNode=name+"_PI_"+bone.name,
+                                                toField="set_fraction"))
+                                            positionRoutes.append(ROUTE(
+                                                fromNode=name+"_PI_"+bone.name,
+                                                fromField="value_changed",
                                             toNode=HANIM_DEF_PREFIX+bone.name,
                                             toField="translation"))
+                                            root_found = True
 
                                         rotInterp = OrientationInterpolator()
                                         setUSEDEF(name+"_OI_", bone.name, rotInterp)
@@ -813,32 +826,45 @@ def export(context, x3dv_export_settings):
                                             fromField="value_changed",
                                             toNode=HANIM_DEF_PREFIX+bone.name,
                                             toField="rotation"))
+                                    if not root_found:
+                                        print("humanoid_root not found in bone data")
+                                    root_found = False
+                                    lasttime = range(int(action.frame_range.x), int(action.frame_range.y) + 1)[-1]
+                                    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
+                                    keyframe_time = 0
                                     for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
                                         # frame is frame number
                                         bpy.context.scene.frame_set(frame)
-                                        print(f"Exporting frame {frame}")
+                                        print(f"Exporting interpolator frame {frame}")
                                         for b in range(numbones):
                                             bone = armature.pose.bones[b]
                                             bone.rotation_mode = 'AXIS_ANGLE'
-                                            positionInterpolators[b].key.append(keyframe_time)
-                                            loc = [
-                                                bone.location[0]*lengthUnitConversion, # location
-                                                bone.location[2]*lengthUnitConversion, # location  reverse Y and Z for X3D
-                                                bone.location[1]*lengthUnitConversion # location  reverse Y and Z for X3D
-                                                ]
-                                            positionInterpolators[b].keyValue.append(loc) # location
-                                            axa = bone.rotation_axis_angle
-                                            rot = [axa[0], axa[1], axa[2], axa[3]]
-                                            orientationInterpolators[b].key.append(keyframe_time)
-                                            orientationInterpolators[b].keyValue.append(rot) # SFRotation
+                                            if bone.name == 'humanoid_root':
+                                                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+                                                loc = round_array(bone.location)
+                                                positionInterpolators[b].keyValue.append(loc) # location
+                                                root_found = True
+                                            axa = round_array_no_unit_scale(bone.rotation_axis_angle)
+                                            oldlen = len(orientationInterpolators[b].keyValue)
+                                            if oldlen > 0:
+                                                oldaxa = orientationInterpolators[b].keyValue[oldlen-1]
+                                            else:
+                                                oldaxa = None
+                                            if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
+                                                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+                                                orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]]) # TODO SFRotation.x, y, z, w
                                         keyframe_time = keyframe_time + keyframe_length
                                     children.append(time_sensor)
                                     children.append(activate_sensor)
                                     children.append(activate_route)
-                                    children.append(positionInterpolators[:])
-                                    children.append(positionRoutes[:])
                                     children.append(orientationInterpolators[:])
                                     children.append(orientationRoutes[:])
+                                    if root_found:
+                                        print("humanoid_root found in bone data")
+                                        children.append(positionInterpolators[:])
+                                        children.append(positionRoutes[:])
+                                    else:
+                                        print("humanoid_root not found in bone data")
                                     return children
                                 else:
                                     print("No animation data associated with the armature.")
@@ -850,6 +876,15 @@ def export(context, x3dv_export_settings):
                       print("Object is not an armature.")
                   return children
               case     "HAnimMotion":
+                  print(f"Exporting bvh of {tag} {obj.type}")
+                  node = None
+                  if obj.type == 'ARMATURE':
+                      armature = obj
+                      bpy.context.view_layer.objects.active = armature
+                      bpy.ops.object.mode_set(mode='POSE')
+                      node = write_animation(obj)
+                  return node
+              case     "HAnimMotionOld":
                   print(f"Exporting motion of {tag} {obj.type}")
                   if obj.type == 'ARMATURE':
                       armature = obj
@@ -865,28 +900,45 @@ def export(context, x3dv_export_settings):
                                     print(f"Exporting action")
                                     values = []
                                     # numframes = range(int(action.frame_range.x), int(action.frame_range.y) + 1)
+                                    root_found = False
                                     for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
                                         # frame is frame number
                                         bpy.context.scene.frame_set(frame)
-                                        print(f"Exporting frame {frame}")
+                                        print(f"Exporting values frame {frame}")
                                         for bone in armature.pose.bones:
-                                            bone.rotation_mode = 'XYZ'
-                                            values.append(bone.location[0]*lengthUnitConversion) # location
-                                            values.append(bone.location[2]*lengthUnitConversion) # location  reverse Y and Z for X3D
-                                            values.append(bone.location[1]*lengthUnitConversion) # location  reverse Y and Z for X3D
+                                            bone.rotation_mode = 'XZY'
+                                            if bone.name == 'humanoid_root':
+                                                loc = round_array(bone.location)
+                                                values.append(loc[0]) # location
+                                                values.append(loc[1]) # location  reverse Y and Z for X3D
+                                                values.append(loc[2]) # location  reverse Y and Z for X3D
+                                                root_found = True
                                             eul = bone.rotation_euler
+                                            rot = [ eul.x, eul.y, eul.z ]
                                             if bpy.context.scene.unit_settings.system_rotation == 'DEGREES':
-                                                values.append(math.radians(eul.x)) # rotation_euler
-                                                values.append(math.radians(eul.y)) # rotation_euler
-                                                values.append(math.radians(eul.z)) # rotation_euler
+                                                r = round_array_no_unit_scale([math.radians(rot[0]), math.radians(rot[1]),math.radians(rot[2])])
+                                                values.append(r[0]) # rotation_euler
+                                                values.append(r[1]) # rotation_euler
+                                                values.append(r[2]) # rotation_euler
                                             else:
-                                                values.append(eul.x) # rotation_euler
-                                                values.append(eul.y) # rotation_euler
-                                                values.append(eul.z) # rotation_euler
+                                                r = round_array_no_unit_scale(rot)
+                                                values.append(r[0]) # rotation_euler
+                                                values.append(r[1]) # rotation_euler
+                                                values.append(r[2]) # rotation_euler
                                             # values.append(bone.scale[0]) # scale
                                             # values.append(bone.scale[1]) # scale
                                             # values.append(bone.scale[2]) # scale
                                     numbones = len(armature.pose.bones)
+                                    if root_found:
+                                        print("humanoid_root found in bone data, adding position")
+                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3 + 1)])
+                                        channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
+                                        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones if bone.name != "humanoid_root"))
+                                    else:
+                                        print("humanoid_root not found in bone data, not adding position")
+                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
+                                        channels=("3 Xrotation Yrotation Zrotation " * (numbones - 1))
+                                        joints=(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones))
 
                                     node = HAnimMotion(
                                         #frameIncrement=1,
@@ -894,9 +946,9 @@ def export(context, x3dv_export_settings):
                                         loop=True,
                                         #frameDuration=0.033333,
                                         enabled=True,
-                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 6)]),
-                                        channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation " * numbones,
-                                        joints=" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones),
+                                        channels=channels,
+                                        joints=joints,
+                                        channelsEnabled=channelsEnabled,
                                         values=MFFloat(values)
                                         )
                                     return node
@@ -1178,7 +1230,7 @@ def export(context, x3dv_export_settings):
                 node = HAnimJoint()
                 setUSEDEF(HANIM_DEF_PREFIX+joint.name, None, node)
                 humanoid.joints.append(node)
-        scale = getscenescale(bpy.context.scene)
+        scale = 1 # getscenescale(bpy.context.scene)
         unit_settings = bpy.context.scene.unit_settings
         length_unit = bpy.context.scene.unit_settings.length_unit 
         print(f"scene scale is {scale} {unit_settings} {length_unit}")
@@ -1479,7 +1531,7 @@ def export(context, x3dv_export_settings):
                        
                         for x3d_v in vert_tri_list:
                             #fw('%.6f %.6f %.6f ' % mesh_vertices[x3d_v[1]].co[:])
-                            coord.point.append((mesh_vertices[x3d_v[1]].co[:]))
+                            coord.point.append(round_array(mesh_vertices[x3d_v[1]].co[:]))
 
                         if export_settings['use_normals'] or is_force_normals:
                             norm = Normal()
@@ -1488,7 +1540,7 @@ def export(context, x3dv_export_settings):
                             #fw('vector="')
                             for x3d_v in vert_tri_list:
                                 #fw('%.6f %.6f %.6f ' % mesh_vertices[x3d_v[1]].normal[:])
-                                norm.vector.append(mesh_vertices[x3d_v[1]].normal[:])
+                                norm.vector.append(round_array_no_unit_scale(mesh_vertices[x3d_v[1]].normal[:]))
 
                         if is_uv:
                             texcoord = TextureCoordinate()
@@ -1496,7 +1548,7 @@ def export(context, x3dv_export_settings):
                             #fw('%s<TextureCoordinate point="' % ident)
                             for x3d_v in vert_tri_list:
                                 #fw('%.4f %.4f ' % x3d_v[0][slot_uv])
-                                texcoord.point.append(x3d_v[0][slot_uv])
+                                texcoord.point.append(round_array_no_unit_scale(x3d_v[0][slot_uv]))
 
 
                         if is_col:
@@ -1592,10 +1644,11 @@ def export(context, x3dv_export_settings):
                                 for v in mesh.vertices:
                                     #fw('%.6f %.6f %.6f ' % v.co[:])
                                     #ifs.coord.point.append(v.co[:])
-                                    v.co[0] = v.co[0]*lengthUnitConversion
-                                    v.co[1] = v.co[1]*lengthUnitConversion
-                                    v.co[2] = -v.co[2]*lengthUnitConversion
-                                    ifs.coord.point.append(v.co[:])
+                                    v.co[0] = v.co[0]
+                                    v.co[1] = v.co[1]
+                                    v.co[2] = -v.co[2]
+                                    loc = round_array(v.co)
+                                    ifs.coord.point.append(loc[:])
 
                                 is_coords_written = True
 
@@ -1605,7 +1658,7 @@ def export(context, x3dv_export_settings):
 
                                     for v in mesh.vertices:
                                         #fw('%.6f %.6f %.6f ' % v.normal[:])
-                                        ifs.normal.vector.append(v.normal[:])
+                                        ifs.normal.vector.append(round_array_no_unit_scale(v.normal[:]))
 
                         if is_uv:
                             texcoord = TextureCoordinate()
@@ -1615,7 +1668,7 @@ def export(context, x3dv_export_settings):
                                     # John patch
                                     if len(mesh_loops_uv) > 0:
                                         #fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
-                                        texcoord.point.append(mesh_loops_uv[lidx].uv[:])
+                                        texcoord.point.append(round_array_no_unit_scale(mesh_loops_uv[lidx].uv[:]))
 
                         if is_col:
                             # Need better logic here, dynamic determination
@@ -2391,25 +2444,6 @@ def save_OLD(context,x3dv_export_settings):
 
     return {'FINISHED'}
 
-def getscenescale(scene):
-    unit_settings = scene.unit_settings
-
-    if unit_settings.system in {"METRIC", "IMPERIAL"}:
-        length_unit = unit_settings.length_unit 
-        if length_unit == 'CENTIMETERS':
-            print("Converting centimeters to meters")
-            return 0.01
-        else:
-            print(f"Using normal metric or imperial scale {unit_settings.scale_length}")
-            # this appears to be wrong for centimeters
-            return unit_settings.scale_length
-    else:
-        # No unit system in use
-        print(f"Using normal scale {unit_settings.system} {unit_settings.scale_length}")
-        return 1
-
-lengthUnitConversion = getscenescale(bpy.context.scene)
-
 def save(context,export_settings):
     """Start the x3dv export and saves to content file."""
 
@@ -2423,6 +2457,7 @@ def save(context,export_settings):
 
     __notify_start(context)
     start_time = time.time()
+    x3dv_round_precision = export_settings['x3dv_round_precision']
 
     #x3dmodel = blender2x3d(export_settings) #test export of procedurally declared test scene
     x3dmodel = export(context, export_settings)
