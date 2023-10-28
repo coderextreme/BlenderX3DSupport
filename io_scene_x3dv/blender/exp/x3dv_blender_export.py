@@ -752,7 +752,6 @@ def export(context, x3dv_export_settings):
                   return node
               case     "HAnimHumanoid":
                   print(f"Exporting type {tag} {obj.type}")
-                                        
                   if motions and motions[0] is not None:
                       print(f"{motions}")
                       node = HAnimHumanoid(motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
@@ -939,7 +938,6 @@ def export(context, x3dv_export_settings):
                                         channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
                                         channels=("3 Xrotation Yrotation Zrotation " * (numbones - 1))
                                         joints=(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones))
-
                                     node = HAnimMotion(
                                         #frameIncrement=1,
                                         #frameIndex=0,
@@ -988,7 +986,6 @@ def export(context, x3dv_export_settings):
 #                                if group.group >= 0  and group.group < len(vertex_groups) and vertex_groups[group.group].name == joint.name:
 #                                    skinCoordIndex.append(vertex.index)
 #                                    skinCoordWeight.append(group.weight)
-    
         # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
         if not joint.name.endswith("_end"):  # exclude sites for now
             try:
@@ -1017,7 +1014,6 @@ def export(context, x3dv_export_settings):
             setUSEDEF(HANIM_DEF_PREFIX+"SEGMENT_FOR_", site_name, segment)
             node = HAnimJoint( children=[ segment ]) # TODO maybe return site?
             return node;
-
 
     class HAnimNode:
         def __init__(self, name, parent_name, joint, joint_lookup):
@@ -1076,12 +1072,12 @@ def export(context, x3dv_export_settings):
                 joint_parent_name = armature.name
             HAnimNode(joint.name, joint_parent_name, joint, joint_lookup) # populates joint_lookup
 
-
         # BEGINNNING
         # get the names of the bones in the armature associated with the object
         #for modifier in obj.modifiers:
             #if modifier.type == 'ARMATURE':
                 #armature = modifier.object.data
+            
         armature_bones = {bone.name for bone in armature.data.bones}
                 #break
             
