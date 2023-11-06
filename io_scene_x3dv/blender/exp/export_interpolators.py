@@ -29,22 +29,23 @@ import random
 from x3d import *
 from .RoundArray import round_array, round_array_no_unit_scale
 
-def write_animation(obj):  # pass armature object
+def write_interpolators(obj, name, prefix):  # pass armature object
 
-    values = []
     root_found = False
 
-    def ensure_rot_order(rot_order_str):
-        if set(rot_order_str) != {'X', 'Y', 'Z'}:
-            rot_order_str = "XZY"
-        return rot_order_str
+    def setUSEDEF(prefix, name, node):
+        if name is None:
+            name = ""
+        else:
+            node.name = name
+        node.DEF = prefix+name
 
     from mathutils import Matrix, Euler
     from math import degrees
 
     arm = obj.data
-    node = None
-    rotate_mode = 'XZY'
+    nodes = []
+    rotate_mode = 'AXIS_ANGLE'
     root_transform_only=False
 
     # Build a dictionary of children.
@@ -73,11 +74,6 @@ def write_animation(obj):  # pass armature object
         loc = bone.head_local
         node_locations[bone_name] = loc
 
-        if rotate_mode == "NATIVE":
-            rot_order_str = ensure_rot_order(pose_bone.rotation_mode)
-        else:
-            rot_order_str = rotate_mode
-
         # make relative if we can
         if bone.parent:
             loc = loc - node_locations[bone.parent.name]
@@ -94,7 +90,6 @@ def write_animation(obj):  # pass armature object
         else:
             # Write the bone end.
             loc = bone.tail_local - node_locations[bone_name]
-            values.append(round_array(loc)[:]) # location
             root_found = True
 
     if len(children[None]) == 1:
@@ -129,37 +124,14 @@ def write_animation(obj):  # pass armature object
             "rest_arm_imat",
             # Rest_local_mat inverted.
             "rest_local_imat",
-            # Last used euler to preserve euler compatibility in between keyframes.
-            "prev_euler",
             # Is the bone disconnected to the parent bone?
-            "skip_position",
-            "rot_order",
-            "rot_order_str",
-            # Needed for the euler order when converting from a matrix.
-            "rot_order_str_reverse",
+            "skip_position"
         )
-
-        _eul_order_lookup = {
-            'XYZ': (0, 1, 2),
-            'XZY': (0, 2, 1),
-            'YXZ': (1, 0, 2),
-            'YZX': (1, 2, 0),
-            'ZXY': (2, 0, 1),
-            'ZYX': (2, 1, 0),
-        }
 
         def __init__(self, bone_name):
             self.name = bone_name
             self.rest_bone = arm.bones[bone_name]
             self.pose_bone = obj.pose.bones[bone_name]
-
-            if rotate_mode == "NATIVE":
-                self.rot_order_str = ensure_rot_order(self.pose_bone.rotation_mode)
-            else:
-                self.rot_order_str = rotate_mode
-            self.rot_order_str_reverse = self.rot_order_str[::-1]
-
-            self.rot_order = DecoratedBone._eul_order_lookup[self.rot_order_str]
 
             self.pose_mat = self.pose_bone.matrix
 
@@ -173,7 +145,6 @@ def write_animation(obj):  # pass armature object
             self.rest_local_imat = self.rest_local_mat.inverted()
 
             self.parent = None
-            self.prev_euler = Euler((0.0, 0.0, 0.0), self.rot_order_str_reverse)
             # self.skip_position = ((self.rest_bone.use_connect or root_transform_only) and self.rest_bone.parent)
             self.skip_position = True
 
@@ -207,6 +178,65 @@ def write_animation(obj):  # pass armature object
 
     print("Frame count: %d\n" % frame_count)
     print("Frame duration: %.6f\n" % frame_duration)
+    armature = obj
+    numbones = len(armature.pose.bones)
+    frame_range = [frame_current, frame_end]
+    time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
+    clock_name = name+"_Clock"
+    setUSEDEF(clock_name, None, time_sensor)
+    activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
+    activate_name = name+"_Close"
+    setUSEDEF(activate_name, None, activate_sensor)
+    activate_route = ROUTE(
+            fromNode=activate_name,
+            fromField="enterTime",
+            toNode=clock_name,
+            toField="startTime")
+
+    positionInterpolators = []
+    orientationInterpolators = []
+    positionRoutes = []
+    orientationRoutes = []
+    root_found = False
+    b = 0
+    for dbone in bones_decorated:
+        bone = armature.pose.bones[b]
+        if bone.name == 'humanoid_root':
+            posInterp = PositionInterpolator()
+            setUSEDEF(name+"_PI_", bone.name, posInterp)
+            positionInterpolators.append(posInterp)
+            positionRoutes.append(ROUTE(
+                fromNode=clock_name,
+                fromField="fraction_changed",
+                toNode=name+"_PI_"+bone.name,
+                toField="set_fraction"))
+            positionRoutes.append(ROUTE(
+                fromNode=name+"_PI_"+bone.name,
+                fromField="value_changed",
+            toNode=prefix+bone.name,
+            toField="translation"))
+            root_found = True
+
+        rotInterp = OrientationInterpolator()
+        setUSEDEF(name+"_OI_", bone.name, rotInterp)
+        orientationInterpolators.append(rotInterp)
+        orientationRoutes.append(ROUTE(
+            fromNode=clock_name,
+            fromField="fraction_changed",
+            toNode=name+"_OI_"+bone.name,
+            toField="set_fraction"))
+        orientationRoutes.append(ROUTE(
+            fromNode=name+"_OI_"+bone.name,
+            fromField="value_changed",
+            toNode=prefix+bone.name,
+            toField="rotation"))
+        b += 1
+    if not root_found:
+        print("humanoid_root not found in bone data")
+    root_found = False
+    lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
+    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
+    keyframe_time = 0
 
     for frame in range(frame_start, frame_end + 1):
         scene.frame_set(frame)
@@ -214,6 +244,7 @@ def write_animation(obj):  # pass armature object
         for dbone in bones_decorated:
             dbone.update_posedata()
 
+        b = 0
         for dbone in bones_decorated:
             trans = Matrix.Translation(dbone.rest_bone.head_local)
             itrans = Matrix.Translation(-dbone.rest_bone.head_local)
@@ -228,44 +259,38 @@ def write_animation(obj):  # pass armature object
                 loc = mat_final.to_translation() + dbone.rest_bone.head
 
             # keep eulers compatible, no jumping on interpolation.
-            rot = mat_final.to_euler(dbone.rot_order_str_reverse, dbone.prev_euler)
+            locign, rot, scaleign = mat_final.decompose()
+            # rot = rot.to_axis_angle()
 
             if not dbone.skip_position:
-                values.append(round_array(loc)[:]) # location
+                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+                positionInterpolators[b].keyValue.append(round_array(loc)[:]) # location
 
-            rt = [None, None, None]
-            rt[0] = degrees(rot[dbone.rot_order[0]]) # rotation_euler
-            rt[1] = degrees(rot[dbone.rot_order[1]]) # rotation_euler
-            rt[2] = degrees(rot[dbone.rot_order[2]]) # rotation_euler
-            values.append(round_array_no_unit_scale(rt)[:])
-
-            dbone.prev_euler = rot
+            rt = [None, None, None, None]
+            rt[0] = rot[0]
+            rt[1] = rot[1]
+            rt[2] = rot[2]
+            rt[3] = rot[3]
+            axa = round_array_no_unit_scale(rt)[:]
+            oldlen = len(orientationInterpolators[b].keyValue)
+            if oldlen > 0:
+                oldaxa = orientationInterpolators[b].keyValue[oldlen-1]
+            else:
+                oldaxa = None
+            if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
+                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+                orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
+            b += 1
+        keyframe_time = keyframe_time + keyframe_length
 
     scene.frame_set(frame_current)
-    armature = obj
-    numbones = len(armature.pose.bones)
-    HANIM_DEF_PREFIX = 'hanim_'
-    if root_found:
-        print("humanoid_root found in bone data, adding position")
-        channelsEnabled=MFBool([random.choice([True]) for i in range((numbones + 1) * 3)])
-        channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
-        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones if bone.name != "humanoid_root"))
-    else:
-        print("humanoid_root not found in bone data, not adding position")
-        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
-        channels=("3 Xrotation Yrotation Zrotation " * (numbones))
-        joints=(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones))
-
-    node = HAnimMotion(
-        frameIncrement=1,
-        #  frameCount=frame_count, outputOnly
-        frameIndex=frame_start,
-        frameDuration=frame_duration,
-        loop=True,
-        enabled=True,
-        channels=channels,
-        joints=joints,
-        channelsEnabled=channelsEnabled,
-        values=MFFloat(values)
-        )
-    return node
+    if not dbone.skip_position:
+        print("humanoid_root found in bone data")
+        nodes.append(positionInterpolators[:])
+        nodes.append(positionRoutes[:])
+    nodes.append(time_sensor)
+    nodes.append(activate_sensor)
+    nodes.append(activate_route)
+    nodes.append(orientationInterpolators[:])
+    nodes.append(orientationRoutes[:])
+    return nodes

@@ -27,6 +27,7 @@ import mathutils
 import random
 
 from .export_bvh import write_animation
+from .export_interpolators import write_interpolators
 
 from bpy_extras.io_utils import create_derived_objects
 
@@ -755,7 +756,7 @@ def export(context, x3dv_export_settings):
                                         
                   if motions and motions[0] is not None:
                       print(f"{motions}")
-                      node = HAnimHumanoid(motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
+                      node = HAnimHumanoid( #motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
                                            motions=motions)
                       setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   else:
@@ -763,6 +764,15 @@ def export(context, x3dv_export_settings):
                       setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimInterpolators":
+                  print(f"Exporting rest interpolators of {tag} {obj.type}")
+                  children = []
+                  if obj.type == 'ARMATURE':
+                      armature = obj
+                      bpy.context.view_layer.objects.active = armature
+                      bpy.ops.object.mode_set(mode='POSE')
+                      children = write_interpolators(obj, name, HANIM_DEF_PREFIX)
+                  return children
+              case     "HAnimInterpolatorsOld":
                   print(f"Exporting interpolators of {tag} {obj.type}")
                   children = []
                   if obj.type == 'ARMATURE':
@@ -1066,8 +1076,8 @@ def export(context, x3dv_export_settings):
         bpy.context.view_layer.objects.active = armature
         bpy.ops.object.mode_set(mode='OBJECT')
         #armature_id = quoteattr(HANIM_DEF_PREFIX+armature.parent.name)
-        motions = [b2xHAnimNode(armature, armature_matrix, "motions_"+armature.name, "HAnimMotion")]
-        humanoid = b2xHAnimNode(armature, armature_matrix, "armature_"+armature.name, "HAnimHumanoid", motions=motions)
+        motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
+        humanoid = b2xHAnimNode(armature, armature_matrix, "humanoid", "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
         for joint in armature.data.bones:
             if joint.parent:
