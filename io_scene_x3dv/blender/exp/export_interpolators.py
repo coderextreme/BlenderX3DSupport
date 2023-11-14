@@ -304,7 +304,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             print(f"Rotation {rot}")
 
             if not dbone.skip_position:
-                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / frame_count])[:])
                 positionInterpolators[b].keyValue.append(round_array(loc)[:]) # location
 
             rt = [None, None, None, None]
@@ -319,7 +319,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             else:
                 oldaxa = None
             if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
-                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / frame_count])[:])
                 orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
             b += 1
             dbone.prev_euler = rot
