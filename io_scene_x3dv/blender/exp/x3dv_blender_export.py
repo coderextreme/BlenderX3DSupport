@@ -34,6 +34,8 @@ from bpy_extras.io_utils import create_derived_objects
 from .RoundArray import round_array, round_array_no_unit_scale
 from .GetSceneScale import getscenescale
 
+from .swap_USEbeforeDEF import swap_USEbeforeDEF, USEdict, DEFdict, USEbeforeDEFdict
+
 JointsSegments = {
 "humanoid_root" : "sacrum",
 "sacroiliac" : "pelvis",
@@ -1058,7 +1060,7 @@ def export(context, x3dv_export_settings):
                 defList.append(x3dnode.name)
         if children is not None:
             for child in children:
-                defList = defList + b2xFindCoordinate(child) 
+                defList = defList + b2xFindCoordinate(child)
         return defList
 
     def b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world):
@@ -2357,7 +2359,12 @@ def export(context, x3dv_export_settings):
             if after:
                 for a in after:
                     x3dmodel.Scene.children.append(a)
+        # swap_USEbeforeDEF(node=x3dmodel.Scene)
+        USEdict = {}
+        DEFdict = {}
+        USEbeforeDEFdict = {}
         return x3dmodel
+
 
     x3dmodel = export_main()
 

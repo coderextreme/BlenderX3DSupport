@@ -40,6 +40,11 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             node.name = name
         node.DEF = prefix+name
 
+    def ensure_rot_order(rot_order_str):
+        if set(rot_order_str) != {'X', 'Y', 'Z'}:
+            rot_order_str = "XZY"
+        return rot_order_str
+
     from mathutils import Matrix, Euler
     from math import degrees
 
@@ -73,6 +78,11 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         pose_bone = obj.pose.bones[bone_name]
         loc = bone.head_local
         node_locations[bone_name] = loc
+
+        if rotate_mode == "NATIVE":
+            rot_order_str = ensure_rot_order(pose_bone.rotation_mode)
+        else:
+            rot_order_str = rotate_mode
 
         # make relative if we can
         if bone.parent:
@@ -124,14 +134,41 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             "rest_arm_imat",
             # Rest_local_mat inverted.
             "rest_local_imat",
+            # Last used euler to preserve euler compatibility in between keyframes.
+            "prev_euler",
             # Is the bone disconnected to the parent bone?
-            "skip_position"
+            "skip_position",
+            "rot_order",
+            "rot_order_str",
+            # Needed for the euler order when converting from a matrix.
+            "rot_order_str_reverse",
         )
+
+        _eul_order_lookup = {
+            'AXIS_ANGLE': (0, 1, 2),
+            'XYZ': (0, 1, 2),
+            'XZY': (0, 2, 1),
+            'YXZ': (1, 0, 2),
+            'YZX': (1, 2, 0),
+            'ZXY': (2, 0, 1),
+            'ZYX': (2, 1, 0),
+        }
 
         def __init__(self, bone_name):
             self.name = bone_name
             self.rest_bone = arm.bones[bone_name]
             self.pose_bone = obj.pose.bones[bone_name]
+
+            if rotate_mode == "NATIVE":
+                self.rot_order_str = ensure_rot_order(self.pose_bone.rotation_mode)
+            elif rotate_mode == 'AXIS_ANGLE':
+                self.rot_order_str = 'XYZ'
+            else:
+                self.rot_order_str = rotate_mode
+
+            self.rot_order_str_reverse = self.rot_order_str[::-1]
+
+            self.rot_order = DecoratedBone._eul_order_lookup[self.rot_order_str]
 
             self.pose_mat = self.pose_bone.matrix
 
@@ -145,6 +182,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             self.rest_local_imat = self.rest_local_mat.inverted()
 
             self.parent = None
+            self.prev_euler = Euler((0.0, 0.0, 0.0), self.rot_order_str_reverse)
             # self.skip_position = ((self.rest_bone.use_connect or root_transform_only) and self.rest_bone.parent)
             self.skip_position = True
 
@@ -260,17 +298,20 @@ def write_interpolators(obj, name, prefix):  # pass armature object
 
             # keep eulers compatible, no jumping on interpolation.
             locign, rot, scaleign = mat_final.decompose()
-            # rot = rot.to_axis_angle()
+
+            # rot = mat_final.to_euler(dbone.rot_order_str_reverse, dbone.prev_euler)
+            rot = rot.to_axis_angle()  # convert Quaternion to Axis-Angle
+            print(f"Rotation {rot}")
 
             if not dbone.skip_position:
                 positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
                 positionInterpolators[b].keyValue.append(round_array(loc)[:]) # location
 
             rt = [None, None, None, None]
-            rt[0] = rot[0]
-            rt[1] = rot[1]
-            rt[2] = rot[2]
-            rt[3] = rot[3]
+            rt[0] = rot[0][0]
+            rt[1] = rot[0][1]
+            rt[2] = rot[0][2]
+            rt[3] = rot[1]
             axa = round_array_no_unit_scale(rt)[:]
             oldlen = len(orientationInterpolators[b].keyValue)
             if oldlen > 0:
@@ -281,6 +322,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
                 orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
                 orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
             b += 1
+            dbone.prev_euler = rot
         keyframe_time = keyframe_time + keyframe_length
 
     scene.frame_set(frame_current)
