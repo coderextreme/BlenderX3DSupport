@@ -95,6 +95,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             # Write children
             for child_bone in my_children:
                 serialized_names.append(child_bone)
+                print(f"writing {child_bone}")
                 write_recursive_nodes(child_bone)
 
         else:
@@ -106,11 +107,13 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         key = children[None][0]
         serialized_names.append(key)
 
+        print(f"writing only key {key}")
         write_recursive_nodes(key)
 
     else:
         for child_bone in children[None]:
             serialized_names.append(child_bone)
+            print(f"writing {child_bone}")
             write_recursive_nodes(child_bone)
 
     class DecoratedBone:
@@ -214,8 +217,11 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     frame_count = frame_end - frame_start + 1
     frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
 
+    key_divider = frame_count * frame_count / scene.render.fps 
+
     print("Frame count: %d\n" % frame_count)
     print("Frame duration: %.6f\n" % frame_duration)
+    print("Key divider: %.6f\n" % key_divider)
     armature = obj
     numbones = len(armature.pose.bones)
     frame_range = [frame_current, frame_end]
@@ -239,6 +245,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     b = 0
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
+        print(f"Creating interpolators for {bone.name}")
         if bone.name == 'humanoid_root':
             posInterp = PositionInterpolator()
             setUSEDEF(name+"_PI_", bone.name, posInterp)
@@ -301,10 +308,10 @@ def write_interpolators(obj, name, prefix):  # pass armature object
 
             # rot = mat_final.to_euler(dbone.rot_order_str_reverse, dbone.prev_euler)
             rot = rot.to_axis_angle()  # convert Quaternion to Axis-Angle
-            print(f"Rotation {rot}")
+            # print(f"Rotation {rot}")
 
             if not dbone.skip_position:
-                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / frame_count])[:])
+                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
                 positionInterpolators[b].keyValue.append(round_array(loc)[:]) # location
 
             rt = [None, None, None, None]
@@ -319,7 +326,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             else:
                 oldaxa = None
             if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
-                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / frame_count])[:])
+                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
                 orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
             b += 1
             dbone.prev_euler = rot
@@ -330,6 +337,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         print("humanoid_root found in bone data")
         nodes.append(positionInterpolators[:])
         nodes.append(positionRoutes[:])
+    print(f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
     nodes.append(time_sensor)
     nodes.append(activate_sensor)
     nodes.append(activate_route)

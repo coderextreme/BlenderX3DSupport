@@ -773,208 +773,208 @@ def export(context, x3dv_export_settings):
                       bpy.ops.object.mode_set(mode='POSE')
                       children = write_interpolators(obj, name, HANIM_DEF_PREFIX)
                   return children
-              case     "HAnimInterpolatorsOld":
-                  print(f"Exporting interpolators of {tag} {obj.type}")
-                  children = []
-                  if obj.type == 'ARMATURE':
-                      armature = obj
-                      bpy.context.view_layer.objects.active = armature
-                      bpy.ops.object.mode_set(mode='POSE')
-                      print(f"Activated armature {armature} in pose mode")
-                      if armature:
-                            animation_data = armature.animation_data
-                            if animation_data:
-                                print(f"Exporting animation data")
-                                action = animation_data.action
-                                if action:
-                                    numbones = len(armature.pose.bones)
-                                    frame_range = action.frame_range
-                                    time_sensor = TimeSensor(cycleInterval=(frame_range[1] - frame_range[0]), loop=True, enabled=True)
-                                    clock_name = name+"_Clock"
-                                    setUSEDEF(clock_name, None, time_sensor)
-                                    activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
-                                    activate_name = name+"_Close"
-                                    setUSEDEF(activate_name, None, activate_sensor)
-                                    activate_route = ROUTE(
-                                            fromNode=activate_name,
-                                            fromField="enterTime",
-                                            toNode=clock_name,
-                                            toField="startTime")
-
-                                    positionInterpolators = []
-                                    orientationInterpolators = []
-                                    positionRoutes = []
-                                    orientationRoutes = []
-                                    root_found = False
-                                    for b in range(numbones):
-                                        bone = armature.pose.bones[b]
-                                        if bone.name == 'humanoid_root':
-                                            posInterp = PositionInterpolator()
-                                            setUSEDEF(name+"_PI_", bone.name, posInterp)
-                                            positionInterpolators.append(posInterp)
-                                            positionRoutes.append(ROUTE(
-                                                fromNode=clock_name,
-                                                fromField="fraction_changed",
-                                                toNode=name+"_PI_"+bone.name,
-                                                toField="set_fraction"))
-                                            positionRoutes.append(ROUTE(
-                                                fromNode=name+"_PI_"+bone.name,
-                                                fromField="value_changed",
-                                            toNode=HANIM_DEF_PREFIX+bone.name,
-                                            toField="translation"))
-                                            root_found = True
-
-                                        rotInterp = OrientationInterpolator()
-                                        setUSEDEF(name+"_OI_", bone.name, rotInterp)
-                                        orientationInterpolators.append(rotInterp)
-                                        orientationRoutes.append(ROUTE(
-                                            fromNode=clock_name,
-                                            fromField="fraction_changed",
-                                            toNode=name+"_OI_"+bone.name,
-                                            toField="set_fraction"))
-                                        orientationRoutes.append(ROUTE(
-                                            fromNode=name+"_OI_"+bone.name,
-                                            fromField="value_changed",
-                                            toNode=HANIM_DEF_PREFIX+bone.name,
-                                            toField="rotation"))
-                                    if not root_found:
-                                        print("humanoid_root not found in bone data")
-                                    root_found = False
-                                    lasttime = range(int(action.frame_range.x), int(action.frame_range.y) + 1)[-1]
-                                    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
-                                    keyframe_time = 0
-                                    for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
-                                        # frame is frame number
-                                        bpy.context.scene.frame_set(frame)
-                                        print(f"Exporting interpolator frame {frame}")
-                                        for b in range(numbones):
-                                            bone = armature.pose.bones[b]
-                                            bone.rotation_mode = 'AXIS_ANGLE'
-                                            if bone.name == 'humanoid_root':
-                                                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
-                                                loc = round_array(bone.location)
-                                                positionInterpolators[b].keyValue.append(loc) # location
-                                                root_found = True
-                                            axa = round_array_no_unit_scale(bone.rotation_axis_angle)
-                                            oldlen = len(orientationInterpolators[b].keyValue)
-                                            if oldlen > 0:
-                                                oldaxa = orientationInterpolators[b].keyValue[oldlen-1]
-                                            else:
-                                                oldaxa = None
-                                            if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
-                                                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
-                                                orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]]) # TODO SFRotation.x, y, z, w
-                                        keyframe_time = keyframe_time + keyframe_length
-                                    children.append(time_sensor)
-                                    children.append(activate_sensor)
-                                    children.append(activate_route)
-                                    children.append(orientationInterpolators[:])
-                                    children.append(orientationRoutes[:])
-                                    if root_found:
-                                        print("humanoid_root found in bone data")
-                                        children.append(positionInterpolators[:])
-                                        children.append(positionRoutes[:])
-                                    else:
-                                        print("humanoid_root not found in bone data")
-                                    return children
-                                else:
-                                    print("No animation data associated with the armature.")
-                            else:
-                                print("No animation data found for the armature.")
-                      else:
-                          print("No armature found in the scene.")
-                  else:
-                      print("Object is not an armature.")
-                  return children
-              case     "HAnimMotion":
-                  print(f"Exporting bvh of {tag} {obj.type}")
-                  node = None
-                  if obj.type == 'ARMATURE':
-                      armature = obj
-                      bpy.context.view_layer.objects.active = armature
-                      bpy.ops.object.mode_set(mode='POSE')
-                      node = write_animation(obj)
-                  return node
-              case     "HAnimMotionOld":
-                  print(f"Exporting motion of {tag} {obj.type}")
-                  if obj.type == 'ARMATURE':
-                      armature = obj
-                      bpy.context.view_layer.objects.active = armature
-                      bpy.ops.object.mode_set(mode='POSE')
-                      print(f"Activated armature {armature}")
-                      if armature:
-                            animation_data = armature.animation_data
-                            if animation_data:
-                                print(f"Exporting animation data")
-                                action = animation_data.action
-                                if action:
-                                    print(f"Exporting action")
-                                    values = []
-                                    # numframes = range(int(action.frame_range.x), int(action.frame_range.y) + 1)
-                                    root_found = False
-                                    for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
-                                        # frame is frame number
-                                        bpy.context.scene.frame_set(frame)
-                                        print(f"Exporting values frame {frame}")
-                                        for bone in armature.pose.bones:
-                                            bone.rotation_mode = 'XZY'
-                                            if bone.name == 'humanoid_root':
-                                                loc = round_array(bone.location)
-                                                values.append(loc[0]) # location
-                                                values.append(loc[1]) # location  reverse Y and Z for X3D
-                                                values.append(loc[2]) # location  reverse Y and Z for X3D
-                                                root_found = True
-                                            eul = bone.rotation_euler
-                                            rot = [ eul.x, eul.y, eul.z ]
-                                            if bpy.context.scene.unit_settings.system_rotation == 'DEGREES':
-                                                r = round_array_no_unit_scale([math.radians(rot[0]), math.radians(rot[1]),math.radians(rot[2])])
-                                                values.append(r[0]) # rotation_euler
-                                                values.append(r[1]) # rotation_euler
-                                                values.append(r[2]) # rotation_euler
-                                            else:
-                                                r = round_array_no_unit_scale(rot)
-                                                values.append(r[0]) # rotation_euler
-                                                values.append(r[1]) # rotation_euler
-                                                values.append(r[2]) # rotation_euler
-                                            # values.append(bone.scale[0]) # scale
-                                            # values.append(bone.scale[1]) # scale
-                                            # values.append(bone.scale[2]) # scale
-                                    numbones = len(armature.pose.bones)
-                                    if root_found:
-                                        print("humanoid_root found in bone data, adding position")
-                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3 + 1)])
-                                        channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
-                                        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones if bone.name != "humanoid_root"))
-                                    else:
-                                        print("humanoid_root not found in bone data, not adding position")
-                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
-                                        channels=("3 Xrotation Yrotation Zrotation " * (numbones - 1))
-                                        joints=(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones))
-                                    node = HAnimMotion(
-                                        #frameIncrement=1,
-                                        #frameIndex=0,
-                                        loop=True,
-                                        #frameDuration=0.033333,
-                                        enabled=True,
-                                        channels=channels,
-                                        joints=joints,
-                                        channelsEnabled=channelsEnabled,
-                                        values=MFFloat(values)
-                                        )
-                                    return node
-                                else:
-                                    print("No animation data associated with the armature.")
-                            else:
-                                print("No animation data found for the armature.")
-                      else:
-                          print("No armature found in the scene.")
-                  else:
-                      print("Object is not an armature.")
-                  node = HAnimMotion()  # fake motion
-                  return node
+#              case     "HAnimInterpolatorsOld":
+#                  print(f"Exporting interpolators of {tag} {obj.type}")
+#                  children = []
+#                  if obj.type == 'ARMATURE':
+#                      armature = obj
+#                      bpy.context.view_layer.objects.active = armature
+#                      bpy.ops.object.mode_set(mode='POSE')
+#                      print(f"Activated armature {armature} in pose mode")
+#                      if armature:
+#                            animation_data = armature.animation_data
+#                            if animation_data:
+#                                print(f"Exporting animation data")
+#                                action = animation_data.action
+#                                if action:
+#                                    numbones = len(armature.pose.bones)
+#                                    frame_range = action.frame_range
+#                                    time_sensor = TimeSensor(cycleInterval=(frame_range[1] - frame_range[0]), loop=True, enabled=True)
+#                                    clock_name = name+"_Clock"
+#                                    setUSEDEF(clock_name, None, time_sensor)
+#                                    activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
+#                                    activate_name = name+"_Close"
+#                                    setUSEDEF(activate_name, None, activate_sensor)
+#                                    activate_route = ROUTE(
+#                                            fromNode=activate_name,
+#                                            fromField="enterTime",
+#                                            toNode=clock_name,
+#                                            toField="startTime")
+#
+#                                    positionInterpolators = []
+#                                    orientationInterpolators = []
+#                                    positionRoutes = []
+#                                    orientationRoutes = []
+#                                    root_found = False
+#                                    for b in range(numbones):
+#                                        bone = armature.pose.bones[b]
+#                                        if bone.name == 'humanoid_root':
+#                                            posInterp = PositionInterpolator()
+#                                            setUSEDEF(name+"_PI_", bone.name, posInterp)
+#                                            positionInterpolators.append(posInterp)
+#                                            positionRoutes.append(ROUTE(
+#                                                fromNode=clock_name,
+#                                                fromField="fraction_changed",
+#                                                toNode=name+"_PI_"+bone.name,
+#                                                toField="set_fraction"))
+#                                            positionRoutes.append(ROUTE(
+#                                                fromNode=name+"_PI_"+bone.name,
+#                                                fromField="value_changed",
+#                                            toNode=HANIM_DEF_PREFIX+bone.name,
+#                                            toField="translation"))
+#                                            root_found = True
+#
+#                                        rotInterp = OrientationInterpolator()
+#                                        setUSEDEF(name+"_OI_", bone.name, rotInterp)
+#                                        orientationInterpolators.append(rotInterp)
+#                                        orientationRoutes.append(ROUTE(
+#                                            fromNode=clock_name,
+#                                            fromField="fraction_changed",
+#                                            toNode=name+"_OI_"+bone.name,
+#                                            toField="set_fraction"))
+#                                        orientationRoutes.append(ROUTE(
+#                                            fromNode=name+"_OI_"+bone.name,
+#                                            fromField="value_changed",
+#                                            toNode=HANIM_DEF_PREFIX+bone.name,
+#                                            toField="rotation"))
+#                                    if not root_found:
+#                                        print("humanoid_root not found in bone data")
+#                                    root_found = False
+#                                    lasttime = range(int(action.frame_range.x), int(action.frame_range.y) + 1)[-1]
+#                                    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
+#                                    keyframe_time = 0
+#                                    for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
+#                                        # frame is frame number
+#                                        bpy.context.scene.frame_set(frame)
+#                                        print(f"Exporting interpolator frame {frame}")
+#                                        for b in range(numbones):
+#                                            bone = armature.pose.bones[b]
+#                                            bone.rotation_mode = 'AXIS_ANGLE'
+#                                            if bone.name == 'humanoid_root':
+#                                                positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+#                                                loc = round_array(bone.location)
+#                                                positionInterpolators[b].keyValue.append(loc) # location
+#                                                root_found = True
+#                                            axa = round_array_no_unit_scale(bone.rotation_axis_angle)
+#                                            oldlen = len(orientationInterpolators[b].keyValue)
+#                                            if oldlen > 0:
+#                                                oldaxa = orientationInterpolators[b].keyValue[oldlen-1]
+#                                            else:
+#                                                oldaxa = None
+#                                            if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
+#                                                orientationInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time])[:])
+#                                                orientationInterpolators[b].keyValue.append([axa[0], axa[1], axa[2], axa[3]]) # TODO SFRotation.x, y, z, w
+#                                        keyframe_time = keyframe_time + keyframe_length
+#                                    children.append(time_sensor)
+#                                    children.append(activate_sensor)
+#                                    children.append(activate_route)
+#                                    children.append(orientationInterpolators[:])
+#                                    children.append(orientationRoutes[:])
+#                                    if root_found:
+#                                        print("humanoid_root found in bone data")
+#                                        children.append(positionInterpolators[:])
+#                                        children.append(positionRoutes[:])
+#                                    else:
+#                                        print("humanoid_root not found in bone data")
+#                                    return children
+#                                else:
+#                                    print("No animation data associated with the armature.")
+#                            else:
+#                                print("No animation data found for the armature.")
+#                      else:
+#                          print("No armature found in the scene.")
+#                  else:
+#                      print("Object is not an armature.")
+#                  return children
+#              case     "HAnimMotion":
+#                  print(f"Exporting bvh of {tag} {obj.type}")
+#                  node = None
+#                  if obj.type == 'ARMATURE':
+#                      armature = obj
+#                      bpy.context.view_layer.objects.active = armature
+#                      bpy.ops.object.mode_set(mode='POSE')
+#                      node = write_animation(obj)
+#                  return node
+#              case     "HAnimMotionOld":
+#                  print(f"Exporting motion of {tag} {obj.type}")
+#                  if obj.type == 'ARMATURE':
+#                      armature = obj
+#                      bpy.context.view_layer.objects.active = armature
+#                      bpy.ops.object.mode_set(mode='POSE')
+#                      print(f"Activated armature {armature}")
+#                      if armature:
+#                            animation_data = armature.animation_data
+#                            if animation_data:
+#                                print(f"Exporting animation data")
+#                                action = animation_data.action
+#                                if action:
+#                                    print(f"Exporting action")
+#                                    values = []
+#                                    # numframes = range(int(action.frame_range.x), int(action.frame_range.y) + 1)
+#                                    root_found = False
+#                                    for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
+#                                        # frame is frame number
+#                                        bpy.context.scene.frame_set(frame)
+#                                        print(f"Exporting values frame {frame}")
+#                                        for bone in armature.pose.bones:
+#                                            bone.rotation_mode = 'XZY'
+#                                            if bone.name == 'humanoid_root':
+#                                                loc = round_array(bone.location)
+#                                                values.append(loc[0]) # location
+#                                                values.append(loc[1]) # location  reverse Y and Z for X3D
+#                                                values.append(loc[2]) # location  reverse Y and Z for X3D
+#                                                root_found = True
+#                                            eul = bone.rotation_euler
+#                                            rot = [ eul.x, eul.y, eul.z ]
+#                                            if bpy.context.scene.unit_settings.system_rotation == 'DEGREES':
+#                                                r = round_array_no_unit_scale([math.radians(rot[0]), math.radians(rot[1]),math.radians(rot[2])])
+#                                                values.append(r[0]) # rotation_euler
+#                                                values.append(r[1]) # rotation_euler
+#                                                values.append(r[2]) # rotation_euler
+#                                            else:
+#                                                r = round_array_no_unit_scale(rot)
+#                                                values.append(r[0]) # rotation_euler
+#                                                values.append(r[1]) # rotation_euler
+#                                                values.append(r[2]) # rotation_euler
+#                                            # values.append(bone.scale[0]) # scale
+#                                            # values.append(bone.scale[1]) # scale
+#                                            # values.append(bone.scale[2]) # scale
+#                                    numbones = len(armature.pose.bones)
+#                                    if root_found:
+#                                        print("humanoid_root found in bone data, adding position")
+#                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3 + 1)])
+#                                        channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
+#                                        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones if bone.name != "humanoid_root"))
+#                                    else:
+#                                        print("humanoid_root not found in bone data, not adding position")
+#                                        channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
+#                                        channels=("3 Xrotation Yrotation Zrotation " * (numbones - 1))
+#                                        joints=(" ".join(HANIM_DEF_PREFIX+bone.name for bone in armature.pose.bones))
+#                                    node = HAnimMotion(
+#                                        #frameIncrement=1,
+#                                        #frameIndex=0,
+#                                        loop=True,
+#                                        #frameDuration=0.033333,
+#                                        enabled=True,
+#                                        channels=channels,
+#                                        joints=joints,
+#                                        channelsEnabled=channelsEnabled,
+#                                        values=MFFloat(values)
+#                                        )
+#                                    return node
+#                                else:
+#                                    print("No animation data associated with the armature.")
+#                            else:
+#                                print("No animation data found for the armature.")
+#                      else:
+#                          print("No armature found in the scene.")
+#                  else:
+#                      print("Object is not an armature.")
+#                  node = HAnimMotion()  # fake motion
+#                  return node
 
     def b2xJoint(joint_parent, joint, matrix, joint_lookup, segment_lookup, armature, skinCoordInfo):
-        print(f"joint {joint}")
+        # print(f"joint {joint}")
         try:
             if skinCoordInfo[joint.name] is None:
                 skinCoordWeight = []
@@ -1074,7 +1074,8 @@ def export(context, x3dv_export_settings):
         bpy.context.view_layer.objects.active = armature
         bpy.ops.object.mode_set(mode='OBJECT')
         #armature_id = quoteattr(HANIM_DEF_PREFIX+armature.parent.name)
-        motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
+        # motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
+        motions = None
         humanoid = b2xHAnimNode(armature, armature_matrix, "humanoid", "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
         for joint in armature.data.bones:
@@ -2236,43 +2237,56 @@ def export(context, x3dv_export_settings):
             elif obj_type == 'ARMATURE':
                 data = obj.data
                 node = b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
+                prior_after = after
                 for obj_child, obj_child_children in obj_children:
                     [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene)
+                    for a in after:
+                        prior_after.append(a)
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
                             x3dnode.scale = (1, 1, 1)
-                            x3dnode.rotation = (0, 1, 0, 3.1416)
+                            # x3dnode.rotation = (0, 1, 0, 3.1416)
                             node.skin.append(x3dnode)
                             for coord in b2xFindCoordinate(x3dnode):
                                 # TODO handle skinCoord before skin
                                 node.skinCoord = Coordinate(USE=coord)  # only one SFNode is allowed.
+                after = prior_after
                 if node != None:
                     bottom.children.append(node)
                 interpolators = b2xHAnimNode(obj, None, obj.name, "HAnimInterpolators")
+                print(f"Writing {len(interpolators)} nodes for animations.")
                 for i in interpolators:
                     if isinstance(i, list):
+                        print(f"Writing {len(i)} sub-nodes for animations.")
                         for j in i:
                             after.append(j)
                     else:
+                        print(f"Writing {i} sub-node for animations.")
                         after.append(i)
                 children_processed = True
             else:
                 print("Info: Ignoring [%s], object type [%s] not handle yet" % (obj.name,obj_type))
-                pass
+                # pass
 
         # ---------------------------------------------------------------------
         # write out children recursively
         # ---------------------------------------------------------------------
         if not children_processed:
+            prior_after = after
             for obj_child, obj_child_children in obj_children:
                 # no need to combine after's
                 [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene)
                 if x3dnodelist:
                     for x3dnode in x3dnodelist:
                         bottom.children.append(x3dnode)
+                if after:
+                    for a in after:
+                        prior_after.append(a)
+            after = prior_after
         if is_dummy_tx:
             is_dummy_tx = False
 
+        print(f"returning {len(after)} sub-nodes for animations.")
         return [ top.children, after ]
 
     # -------------------------------------------------------------------------
@@ -2357,6 +2371,7 @@ def export(context, x3dv_export_settings):
                 for x3dnode in x3dnodelist:
                     x3dmodel.Scene.children.append(x3dnode)
             if after:
+                print(f"appending {len(after)} sub-nodes for scene children.")
                 for a in after:
                     x3dmodel.Scene.children.append(a)
         # swap_USEbeforeDEF(node=x3dmodel.Scene)
