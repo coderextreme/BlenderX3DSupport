@@ -1653,10 +1653,11 @@ def export(context, x3dv_export_settings):
                                 for v in mesh.vertices:
                                     #fw('%.6f %.6f %.6f ' % v.co[:])
                                     #ifs.coord.point.append(v.co[:])
-                                    v.co[0] = v.co[0]
-                                    v.co[1] = v.co[1]
-                                    v.co[2] = -v.co[2]
-                                    loc = round_array(v.co)
+                                    vco = [ None, None, None ]
+                                    vco[0] = v.co[0]
+                                    vco[1] = v.co[1]
+                                    vco[2] = v.co[2]
+                                    loc = round_array(vco)
                                     ifs.coord.point.append(loc[:])
 
                                 is_coords_written = True
