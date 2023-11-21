@@ -217,7 +217,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     frame_count = frame_end - frame_start + 1
     frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
 
-    key_divider = frame_count * frame_count / scene.render.fps 
+    key_divider = (frame_count - 1) * frame_count / scene.render.fps 
 
     print("Frame count: %d\n" % frame_count)
     print("Frame duration: %.6f\n" % frame_duration)
