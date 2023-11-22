@@ -1245,6 +1245,15 @@ def export(context, x3dv_export_settings):
         print(f"scene scale is {scale} {unit_settings} {length_unit}")
         return humanoid
 
+    def image_get(mat):
+        from bpy_extras import node_shader_utils
+        if mat.use_nodes:
+            mat_wrap = node_shader_utils.PrincipledBSDFWrapper(mat)
+            base_color_tex = mat_wrap.base_color_texture
+            if base_color_tex and base_color_tex.image:
+                return base_color_tex.image
+        return None
+
     def b2xIndexedFaceSet(obj, mesh, mesh_name, matrix, world):
         obj_id = unique_name(obj, OB_ + obj.name, uuid_cache_object, clean_func=clean_def, sep="_")
         mesh_id = unique_name(mesh, ME_ + mesh_name, uuid_cache_mesh, clean_func=clean_def, sep="_")
@@ -1303,7 +1312,7 @@ def export(context, x3dv_export_settings):
             mesh_material_images = [None] * len(mesh_materials)
 
             for i, material in enumerate(mesh_materials):
-                if 0 and material:
+                if material and 'texture_slots' in material:
                     for mtex in material.texture_slots:
                         if mtex:
                             tex = mtex.texture
@@ -1314,6 +1323,8 @@ def export(context, x3dv_export_settings):
                                     mesh_material_mtex[i] = mtex
                                     mesh_material_images[i] = image
                                     break
+                elif material:
+                    mesh_material_images[0] = image_get(material)
 
             # fast access!
             mesh_vertices = mesh.vertices[:]
@@ -1415,26 +1426,28 @@ def export(context, x3dv_export_settings):
                         appr.texture = imt
                         print(f" Appearance {appr} texture {appr.texture} url {appr.texture.url}")
                         # transform by mtex
-                        loc = mesh_material_mtex[material_index].offset[:2]
+                        # TODO
+                        if 0:
+                            loc = mesh_material_mtex[material_index].offset[:2]
 
-                        # mtex_scale * tex_repeat
-                        sca_x, sca_y = mesh_material_mtex[material_index].scale[:2]
+                            # mtex_scale * tex_repeat
+                            sca_x, sca_y = mesh_material_mtex[material_index].scale[:2]
 
-                        sca_x *= mesh_material_tex[material_index].repeat_x
-                        sca_y *= mesh_material_tex[material_index].repeat_y
+                            sca_x *= mesh_material_tex[material_index].repeat_x
+                            sca_y *= mesh_material_tex[material_index].repeat_y
 
-                        # flip x/y is a sampling feature, convert to transform
-                        if mesh_material_tex[material_index].use_flip_axis:
-                            rot = math.pi / -2.0
-                            sca_x, sca_y = sca_y, -sca_x
-                        else:
-                            rot = 0.0
+                            # flip x/y is a sampling feature, convert to transform
+                            if mesh_material_tex[material_index].use_flip_axis:
+                                rot = math.pi / -2.0
+                                sca_x, sca_y = sca_y, -sca_x
+                            else:
+                                rot = 0.0
 
-                        tt = TextureTransform()
-                        tt.translation = loc
-                        tt.scale = (sca_x,sca_y)
-                        tt.rotation = rot
-                        appr.textureTransform = tt
+                            tt = TextureTransform()
+                            tt.translation = loc
+                            tt.scale = (sca_x,sca_y)
+                            tt.rotation = rot
+                            appr.textureTransform = tt
 
                     if use_h3d:
                         #mat_tmp = material if material else gpu_shader_dummy_mat
@@ -2030,10 +2043,13 @@ def export(context, x3dv_export_settings):
             imt = ImageTexture(USE=image_id)
         else:
             image.tag = True
+            print(f"Saving {image.filepath}")
+            image.save()
             imt = ImageTexture(DEF=image_id)
 
             # collect image paths, can load multiple
             # [relative, name-only, absolute]
+            path_mode='AUTO'
             filepath = image.filepath
             filepath_full = bpy.path.abspath(filepath, library=image.library)
             filepath_ref = bpy_extras.io_utils.path_reference(filepath_full, base_src, base_dst, path_mode, "textures", copy_set, image.library)
@@ -2049,8 +2065,8 @@ def export(context, x3dv_export_settings):
             images = [f.replace('\\', '/') for f in images]
             images = [f for i, f in enumerate(images) if f not in images[:i]]
 
-            #fw(ident_step + "url='%s'\n" % ' '.join(['"%s"' % escape(f) for f in images]))
-            imt.url = ['"%s"' % escape(f) for f in images]
+            #fw(ident_step + "url='%s'\n" % ' '.join(['%s' % escape(f) for f in images]))
+            imt.url = ['%s' % escape(f) for f in images]
             return imt
 
     def b2xBackground(world):
