@@ -650,7 +650,7 @@ def export(context, x3dv_export_settings):
         location = matrix.to_translation()[:]
 
         lite = PointLight(DEF=light_id)
-        lite.radius = light.distance
+        lite.radius = light.cutoff_distance
         lite.ambientIntensity = amb_intensity
         lite.intensity = intensity
         lite.color = clamp_color(light.color)

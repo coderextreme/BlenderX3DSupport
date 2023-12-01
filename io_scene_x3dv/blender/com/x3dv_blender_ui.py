@@ -44,7 +44,11 @@ def add_x3dv_settings_to_menu(self, context) :
 
 def register():
     bpy.utils.register_class(NODE_OT_x3dv_SETTINGS)
-    bpy.types.NODE_MT_category_SH_NEW_OUTPUT.append(add_x3dv_settings_to_menu)
+    # this is for 3.6
+    #bpy.types.NODE_MT_category_SH_NEW_OUTPUT.append(add_x3dv_settings_to_menu)
+    # this is for 4.0
+    bpy.types.NODE_MT_category_shader_output.append(add_x3dv_settings_to_menu)
+    
 
 
 def unregister():
