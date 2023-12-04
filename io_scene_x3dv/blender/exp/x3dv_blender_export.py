@@ -26,7 +26,7 @@ import os
 import mathutils
 import random
 
-from .export_bvh import write_animation
+from .export_motions import write_animation
 from .export_interpolators import write_interpolators
 
 from bpy_extras.io_utils import create_derived_objects
