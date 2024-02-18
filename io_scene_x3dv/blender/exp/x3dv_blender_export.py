@@ -1003,7 +1003,7 @@ def export(context, x3dv_export_settings):
             try:
                 segment_name = segment_lookup[joint.name]
             except KeyError:
-                segment_name = None
+                segment_name = "SEGMENT_FOR_"+joint.name
             node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
 
             for joint_child in joint_lookup[joint.name]['joint_children']:
@@ -2043,8 +2043,12 @@ def export(context, x3dv_export_settings):
             imt = ImageTexture(USE=image_id)
         else:
             image.tag = True
-            print(f"Saving {image.filepath}")
-            image.save()
+            try:
+                print(f"Saving {image.filepath}")
+                image.save()
+                print(f"Saved {image.filepath}")
+            except:
+                pass
             imt = ImageTexture(DEF=image_id)
 
             # collect image paths, can load multiple
