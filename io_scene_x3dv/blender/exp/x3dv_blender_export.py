@@ -886,15 +886,15 @@ def export(context, x3dv_export_settings):
 #                  else:
 #                      print("Object is not an armature.")
 #                  return children
-#              case     "HAnimMotion":
-#                  print(f"Exporting bvh of {tag} {obj.type}")
-#                  node = None
-#                  if obj.type == 'ARMATURE':
-#                      armature = obj
-#                      bpy.context.view_layer.objects.active = armature
-#                      bpy.ops.object.mode_set(mode='POSE')
-#                      node = write_animation(obj)
-#                  return node
+              case     "HAnimMotion":
+                  print(f"Exporting bvh of {tag} {obj.type}")
+                  node = None
+                  if obj.type == 'ARMATURE':
+                      armature = obj
+                      bpy.context.view_layer.objects.active = armature
+                      bpy.ops.object.mode_set(mode='POSE')
+                      node = write_animation(obj)
+                  return node
 #              case     "HAnimMotionOld":
 #                  print(f"Exporting motion of {tag} {obj.type}")
 #                  if obj.type == 'ARMATURE':
@@ -1074,8 +1074,8 @@ def export(context, x3dv_export_settings):
         bpy.context.view_layer.objects.active = armature
         bpy.ops.object.mode_set(mode='OBJECT')
         #armature_id = quoteattr(HANIM_DEF_PREFIX+armature.parent.name)
-        # motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
-        motions = None
+        motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
+        # motions = None
         humanoid = b2xHAnimNode(armature, armature_matrix, "humanoid", "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
         for joint in armature.data.bones:
