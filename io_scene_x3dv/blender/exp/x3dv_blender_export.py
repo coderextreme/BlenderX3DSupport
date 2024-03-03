@@ -20,7 +20,7 @@ import bpy
 import sys
 import traceback
 from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
-from io_scene_x3dv.blender.com.x3d import *
+from io_scene_x3dv.blender.com.x3dv import *
 import math
 import os
 import mathutils
