@@ -26,7 +26,7 @@ import sys
 import os
 import random
 
-from x3d import *
+from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 
 def write_interpolators(obj, name, prefix):  # pass armature object

@@ -1,4 +1,4 @@
-from x3d import *
+from x3dv import *
 import copy
 
 USEdict = {}
