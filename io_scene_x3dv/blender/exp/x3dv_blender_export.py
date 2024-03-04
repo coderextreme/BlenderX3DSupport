@@ -1053,6 +1053,10 @@ def export(context, x3dv_export_settings):
             children = x3dnode.children
         elif (isinstance(x3dnode, Transform)):
             children = x3dnode.children
+        elif (isinstance(x3dnode, ImageTexture)):
+            children = x3dnode.children
+        elif (isinstance(x3dnode, Appearance)):
+            children = x3dnode.children
         elif (isinstance(x3dnode, Shape)):
             children = [x3dnode.geometry]
         elif (isinstance(x3dnode, (IndexedFaceSet, IndexedLineSet, IndexedTriangleFanSet, IndexedTriangleSet, IndexedTriangleStripSet, PointSet, TriangleFanSet, TriangleSet, TriangleStripSet))):
@@ -1064,7 +1068,7 @@ def export(context, x3dv_export_settings):
                 try:
                     defList.append(x3dnode.name)
                 except:
-                    defList.append("dummy_replace_with_Coordinate_DEF")
+                    defList.append("coords_dummy_replace_with_Coordinate_DEF")
         if children is not None:
             for child in children:
                 defList = defList + b2xFindCoordinate(child)
@@ -1669,6 +1673,7 @@ def export(context, x3dv_export_settings):
                                     ifs.normal = norms
                             else:
                                 coord = Coordinate(DEF = mesh_id_coords)
+                                coord.DEF = mesh_id_coords
                                 ifs.coord = coord
                                 for v in mesh.vertices:
                                     #fw('%.6f %.6f %.6f ' % v.co[:])
