@@ -461,11 +461,12 @@ def export(context, x3dv_export_settings):
         if name is None:
             name = ""
         else:
-            node.name = name
-        if name_used(prefix+name):
-            node.USE = prefix+name
+            node.name = name.replace(":", "_")
+        pname = prefix+name.replace(":", "_")
+        if name_used(pname):
+            node.USE = pname
         else:
-            node.DEF = prefix+name
+            node.DEF = pname
 
     # store files to copy
     copy_set = set()
@@ -493,18 +494,19 @@ def export(context, x3dv_export_settings):
         filepath = os.path.basename(export_settings['x3dv_filepath'])
         blender_ver = 'Blender %s' % bpy.app.version_string
         copyright = export_settings['x3dv_copyright']
+        if copyright is None:
+            copyright = 2024
         hd = head()
-
+        conversionFactor=getscenescale(bpy.context.scene)
     
-        hd.children=[
-          component(name='HAnim', level=3),
-          unit(category='length', conversionFactor=getscenescale(bpy.context.scene), name=scene.unit_settings.length_unit),
-          meta(content=filepath,name='filename'),
-          meta(content=copyright,name='copyright'),
-          meta(content='http://www.web3D.org',name='reference'),
-          meta(content=blender_ver,name='generator'),
-          meta(content='io_scene_x3dv',name='exporter'),
-        ]
+        hd.children.append(component(name='HAnim', level=3))
+        if conversionFactor != 1:
+              hd.children.append(unit(category='length', conversionFactor=conversionFactor, name=scene.unit_settings.length_unit))
+        hd.children.append(meta(content=filepath,name='title'))
+        hd.children.append(meta(content=copyright,name='copyright'))
+        hd.children.append(meta(content='https://github.com/Web3DConsortium/BlenderX3DSupport (offcial release)',name='reference'))
+        hd.children.append(meta(content=blender_ver,name='generator'))
+        hd.children.append(meta(content='https://github.com/coderextreme/BlenderX3DSupport/tree/main/io_scene_x3dv (experiemental release)',name='exporter'))
 
         # looks interesting but wrong place and not in X3D specs v.4
         #if use_h3d:
@@ -712,8 +714,10 @@ def export(context, x3dv_export_settings):
                                 ])
                             ])
                       setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_tip", site)
+                      objname=obj.name.replace(":", "_")
+                      segmentname=segment_name.replace(":", "_")
                       segment = HAnimSegment(children=[
-                          TouchSensor(description=f"joint {obj.name} segment {segment_name}"),
+                          TouchSensor(description=f"joint {objname} segment {segmentname}"),
                           Transform(translation=center[:],
                               children=[
                                   Shape(
@@ -1057,7 +1061,10 @@ def export(context, x3dv_export_settings):
             if x3dnode.DEF is not None:
                 defList.append(x3dnode.DEF)
             else:
-                defList.append(x3dnode.name)
+                try:
+                    defList.append(x3dnode.name)
+                except:
+                    defList.append("dummy_replace_with_Coordinate_DEF")
         if children is not None:
             for child in children:
                 defList = defList + b2xFindCoordinate(child)
@@ -1237,7 +1244,7 @@ def export(context, x3dv_export_settings):
         for joint in armature.data.bones:
             if not joint.name.endswith("_end"):  # exclude sites for now
                 node = HAnimJoint()
-                setUSEDEF(HANIM_DEF_PREFIX+joint.name, None, node)
+                setUSEDEF(HANIM_DEF_PREFIX+joint.name.replace(":", "_"), None, node)
                 humanoid.joints.append(node)
         scale = 1 # getscenescale(bpy.context.scene)
         unit_settings = bpy.context.scene.unit_settings
@@ -2041,14 +2048,11 @@ def export(context, x3dv_export_settings):
 
         if image.tag:
             imt = ImageTexture(USE=image_id)
+            pass
         else:
             image.tag = True
-            try:
-                print(f"Saving {image.filepath}")
-                image.save()
-                print(f"Saved {image.filepath}")
-            except:
-                pass
+            if not image.filepath:
+                image.filepath = image_id[3:] + ".png"
             imt = ImageTexture(DEF=image_id)
 
             # collect image paths, can load multiple
@@ -2070,8 +2074,14 @@ def export(context, x3dv_export_settings):
             images = [f for i, f in enumerate(images) if f not in images[:i]]
 
             #fw(ident_step + "url='%s'\n" % ' '.join(['%s' % escape(f) for f in images]))
+            try:
+                print(f"Saving {image.url}")
+                image.save()
+                print(f"Saved {image.url}")
+            except:
+                pass
             imt.url = ['%s' % escape(f) for f in images]
-            return imt
+        return imt
 
     def b2xBackground(world):
 
@@ -2353,7 +2363,7 @@ def export(context, x3dv_export_settings):
                     appearance=Appearance(
                         material=Material(
                             diffuseColor = (0, 0, 1),
-                            transparency = 0
+                            transparency = 1
                         ))
                 )
             ])
@@ -2380,7 +2390,7 @@ def export(context, x3dv_export_settings):
                         DEF="JointAppearance",
                         material=Material(
                             diffuseColor = (1, 0.5, 0),
-                            transparency = 0.5
+                            transparency = 1
                         ))
                 )
             ])

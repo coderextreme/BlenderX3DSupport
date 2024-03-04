@@ -38,7 +38,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             name = ""
         else:
             node.name = name
-        node.DEF = prefix+name
+        node.DEF = prefix+name.replace(":", "_")
 
     def ensure_rot_order(rot_order_str):
         if set(rot_order_str) != {'X', 'Y', 'Z'}:
@@ -226,10 +226,10 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     numbones = len(armature.pose.bones)
     frame_range = [frame_current, frame_end]
     time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
-    clock_name = name+"_Clock"
+    clock_name = name+"_Clock".replace(":", "_")
     setUSEDEF(clock_name, None, time_sensor)
     activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
-    activate_name = name+"_Close"
+    activate_name = name+"_Close".replace(":", "_")
     setUSEDEF(activate_name, None, activate_sensor)
     activate_route = ROUTE(
             fromNode=activate_name,
@@ -246,34 +246,37 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
         print(f"Creating interpolators for {bone.name}")
+        pbonename = prefix+bone.name.replace(":", "_")
         if bone.name == 'humanoid_root':
+            pibonename = name+"_PI_"+bone.name.replace(":", "_")
             posInterp = PositionInterpolator()
             setUSEDEF(name+"_PI_", bone.name, posInterp)
             positionInterpolators.append(posInterp)
             positionRoutes.append(ROUTE(
                 fromNode=clock_name,
                 fromField="fraction_changed",
-                toNode=name+"_PI_"+bone.name,
+                toNode=pibonename,
                 toField="set_fraction"))
             positionRoutes.append(ROUTE(
-                fromNode=name+"_PI_"+bone.name,
+                fromNode=pibonename,
                 fromField="value_changed",
-            toNode=prefix+bone.name,
-            toField="translation"))
+                toNode=pbonename,
+                toField="translation"))
             root_found = True
 
         rotInterp = OrientationInterpolator()
         setUSEDEF(name+"_OI_", bone.name, rotInterp)
         orientationInterpolators.append(rotInterp)
+        oibonename = name+"_OI_"+bone.name.replace(":", "_")
         orientationRoutes.append(ROUTE(
             fromNode=clock_name,
             fromField="fraction_changed",
-            toNode=name+"_OI_"+bone.name,
+            toNode=oibonename,
             toField="set_fraction"))
         orientationRoutes.append(ROUTE(
-            fromNode=name+"_OI_"+bone.name,
+            fromNode=oibonename,
             fromField="value_changed",
-            toNode=prefix+bone.name,
+            toNode=pbonename,
             toField="rotation"))
         b += 1
     if not root_found:
