@@ -474,8 +474,8 @@ def export(context, x3dv_export_settings):
         if name is None:
             name = ""
         else:
-            node.name = name.replace(":", "_")
-        pname = prefix+name.replace(":", "_")
+            node.name = name.replace(":", "_").replace(" ", "_").replace(".", "_")
+        pname = prefix+name.replace(":", "_").replace(" ", "_").replace(".", "_")
         if name_used(pname):
             node.USE = pname
         else:
@@ -727,8 +727,8 @@ def export(context, x3dv_export_settings):
                                 ])
                             ])
                       setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_tip", site)
-                      objname=obj.name.replace(":", "_")
-                      segmentname=segment_name.replace(":", "_")
+                      objname=obj.name.replace(":", "_").replace(" ", "_").replace(".", "_")
+                      segmentname=segment_name.replace(":", "_").replace(" ", "_").replace(".", "_")
                       segment = HAnimSegment(children=[
                           TouchSensor(description=f"joint {objname} segment {segmentname}"),
                           Transform(translation=center[:],
@@ -1042,7 +1042,7 @@ def export(context, x3dv_export_settings):
             segment = HAnimSegment(children=[ site ])
             setUSEDEF(HANIM_DEF_PREFIX+"SEGMENT_FOR_", site_name, segment)
             node = HAnimJoint( children=[ segment ]) # TODO maybe return site?
-            return node;
+            return node
 
     class HAnimNode:
         def __init__(self, name, parent_name, joint, joint_lookup):
@@ -1260,7 +1260,7 @@ def export(context, x3dv_export_settings):
         for joint in armature.data.bones:
             if not joint.name.endswith("_end"):  # exclude sites for now
                 node = HAnimJoint()
-                setUSEDEF(HANIM_DEF_PREFIX+joint.name.replace(":", "_"), None, node)
+                setUSEDEF(HANIM_DEF_PREFIX+joint.name.replace(":", "_").replace(" ", "_").replace(".", "_"), None, node)
                 humanoid.joints.append(node)
         scale = 1 # getscenescale(bpy.context.scene)
         unit_settings = bpy.context.scene.unit_settings
@@ -1476,7 +1476,7 @@ def export(context, x3dv_export_settings):
                             print(f"url {url}")
                         appr.texture = imt
                     elif image and not use_h3d:
-                        imt = b2xImageTexture( image)
+                        [ imt, image_id ] = b2xImageTexture( image)
                         appr.texture = imt
                         print(f"Appearance {appr} texture {appr.texture} url {appr.texture.url}")
                         # transform by mtex
@@ -1680,17 +1680,17 @@ def export(context, x3dv_export_settings):
                         if is_col and not is_col_per_vertex:
                             ifs.colorPerVertex = False
 
-                        # for IndexedTriangleSet we use a uv per vertex so this isn't needed.
-                        if is_uv:
-                            j = 0
-                            for i in polygons_group:
-                                num_poly_verts = len(mesh_polygons_vertices[i])
-                                #fw('%s -1 ' % ' '.join((str(i) for i in range(j, j + num_poly_verts))))
-                                for i in range(j, j + num_poly_verts):
-                                    ifs.texCoordIndex.append(i)
-                                ifs.texCoordIndex.append(-1)
-                                j += num_poly_verts
-                            # --- end texCoordIndex
+                        ## for IndexedTriangleSet we use a uv per vertex so this isn't needed.
+                        #if is_uv:
+                        #    j = 0
+                        #    for i in polygons_group:
+                        #        num_poly_verts = len(mesh_polygons_vertices[i])
+                        #        #fw('%s -1 ' % ' '.join((str(i) for i in range(j, j + num_poly_verts))))
+                        #        for i in range(j, j + num_poly_verts):
+                        #            ifs.texCoordIndex.append(i)
+                        #        ifs.texCoordIndex.append(-1)
+                        #        j += num_poly_verts
+                        #    # --- end texCoordIndex
 
                         if True:
                             for i in polygons_group:
@@ -1739,16 +1739,40 @@ def export(context, x3dv_export_settings):
                                         ifs.normal.vector.append(round_array_no_unit_scale(v.normal[:]))
 
                         if is_uv:
-                            texcoord = TextureCoordinate()
-                            ifs.texCoord = texcoord
-                            for i in polygons_group:
-                                for lidx in mesh_polygons[i].loop_indices:
-                                    # John patch
-                                    if lidx >= 0 and len(mesh_loops_uv) > 0 and lidx < len(mesh_loops_uv):   # TODO what if lidx is the length of the array?
-                                        #fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
-                                        texcoord.point.append(round_array_no_unit_scale(mesh_loops_uv[lidx].uv[:]))
-                                    else:
-                                        break
+                            i = 0
+                            lidx = 9048
+                            try:
+                                texcoord = TextureCoordinate()
+                                ifs.texCoord = texcoord
+                                for i in polygons_group:
+                                    #print(f"OK 1 ! at mesh polygons group {i}")
+                                    for lidx in mesh_polygons[i].loop_indices:
+                                        # John patch
+                                        #print(f"OK 2 ! at mesh loop index {lidx}");
+                                        #if len(mesh_loops_uv) <= 0:
+                                        #    print(f"NOT OK 5 ! image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                                        #    raise IndexError()
+                                        #elif lidx < 0:
+                                        #    print(f"NOT OK 6 ! YOU'RE GOING HEAVILY INTO DEBT!  image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                                        #    raise IndexError()
+                                        #elif lidx > 1000000000:
+                                        #    print(f"NOT OK 7 ! YOU WIN THE JACKPOT! > 1 Billion smackeroos!  image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                                        #    raise IndexError()
+                                        #elif i == 501 and lidx == 9048:
+                                        #    raise IndexError()
+                                        #    print(f"NOT OK 8 ! image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                                        #elif len(mesh_loops_uv) > 0:
+                                        #   fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
+                                        #   print(f"OK 3 ! at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                                        texcoord.point.append(round_array_no_unit_scale(mesh_loops_uv[lidx].uv[:]))   # TODO array out of bounds IndexError
+                                        #else:
+                                        #    print(f"NOT OK 4 ! image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                                        #    raise IndexError()
+                            except IndexError:
+                                print(f"ERROR: !!!!!!!!!!!! Array index out of bounds; image {image_id} mesh {mesh_name} at mesh polygons group {i}, mesh loop index {lidx}")
+                                if lidx == 9048:
+                                    texcoord.point.append(round_array_no_unit_scale([0, 0]))   # TODO fudge factor
+                                pass
 
                         if is_col:
                             # Need better logic here, dynamic determination
@@ -2142,7 +2166,7 @@ def export(context, x3dv_export_settings):
                 pass
             imt.url = ['%s' % escape(f) for f in images]
         bpy.ops.object.mode_set(mode="OBJECT")
-        return imt
+        return [ imt, image_id ]
 
     def b2xBackground(world):
 
