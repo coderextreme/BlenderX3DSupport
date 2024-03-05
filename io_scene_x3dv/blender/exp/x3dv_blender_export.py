@@ -36,6 +36,17 @@ from .GetSceneScale import getscenescale
 
 from .swap_USEbeforeDEF import swap_USEbeforeDEF, USEdict, DEFdict, USEbeforeDEFdict
 
+import itertools
+
+class Counter:
+    def __init__(self):
+        self.counter = 0
+    def get_id(self):
+        self.counter += 1
+        return str(self.counter)
+
+counter = Counter()
+
 JointsSegments = {
 "humanoid_root" : "sacrum",
 "sacroiliac" : "pelvis",
@@ -410,6 +421,7 @@ def export(context, x3dv_export_settings):
         uuid_cache_light = {}      # 'LA_' + object.name
         uuid_cache_view = {}      # object, different namespace
         uuid_cache_mesh = {}      # mesh
+        uuid_cache_shape = {}      # mesh
         uuid_cache_material = {}  # material
         uuid_cache_image = {}     # image
         uuid_cache_world = {}     # world
@@ -429,9 +441,10 @@ def export(context, x3dv_export_settings):
         # prevent uuid collisions.
         uuid_cache = {}
         uuid_cache_object = uuid_cache           # object
-        uuid_cache_light = uuid_cache             # 'LA_' + object.name
+        uuid_cache_light = uuid_cache            # 'LA_' + object.name
         uuid_cache_view = uuid_cache             # object, different namespace
         uuid_cache_mesh = uuid_cache             # mesh
+        uuid_cache_shape = uuid_cache            # shape
         uuid_cache_material = uuid_cache         # material
         uuid_cache_image = uuid_cache            # image
         uuid_cache_world = uuid_cache            # world
@@ -664,7 +677,7 @@ def export(context, x3dv_export_settings):
 
         match tag:
               case     "HAnimJoint":
-                  print(f"Exporting joint {tag} {obj.name}")
+                  #print(f"Exporting joint {tag} {obj.name}")
                   try:
                       #obj_matrix = obj.matrix_local
                       #if obj_matrix is not None:
@@ -688,7 +701,7 @@ def export(context, x3dv_export_settings):
                   chivec = mathutils.Vector((chicenter[0], chicenter[1], chicenter[2]))  # in Blender space
                   #chivec.rotate(eul)
                   chicenter = round_array(chivec)  # in X3D space
-                  print(f"center {center[:]}")
+                  #print(f"center {center[:]}")
                   if segment_name is None:
                       node = HAnimJoint(
                          #translation=loc[:],
@@ -748,19 +761,19 @@ def export(context, x3dv_export_settings):
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimSegment":
-                  print(f"Exporting type {tag} {obj.type}")
+                  #print(f"Exporting type {tag} {obj.type}")
                   node = HAnimSegment()
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimSite":
-                  print(f"Exporting type {tag} {obj.type}")
+                  #print(f"Exporting type {tag} {obj.type}")
                   node = HAnimSite()
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimHumanoid":
-                  print(f"Exporting type {tag} {obj.type}")
+                  #print(f"Exporting type {tag} {obj.type}")
                   if motions and motions[0] is not None:
-                      print(f"{motions}")
+                      #print(f"{motions}")
                       node = HAnimHumanoid( #motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
                                            motions=motions)
                       setUSEDEF(HANIM_DEF_PREFIX, name, node)
@@ -769,7 +782,7 @@ def export(context, x3dv_export_settings):
                       setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   return node
               case     "HAnimInterpolators":
-                  print(f"Exporting rest interpolators of {tag} {obj.type}")
+                  #print(f"Exporting rest interpolators of {tag} {obj.type}")
                   children = []
                   if obj.type == 'ARMATURE':
                       armature = obj
@@ -891,7 +904,7 @@ def export(context, x3dv_export_settings):
 #                      print("Object is not an armature.")
 #                  return children
               case     "HAnimMotion":
-                  print(f"Exporting bvh of {tag} {obj.type}")
+                  #print(f"Exporting bvh of {tag} {obj.type}")
                   node = None
                   if obj.type == 'ARMATURE':
                       armature = obj
@@ -1044,7 +1057,6 @@ def export(context, x3dv_export_settings):
                     joint_lookup[parent_name]['joint_children'].append(self)
                 except:
                     joint_lookup[parent_name]['joint_children'].append(self)
-
 
     def b2xFindCoordinate(x3dnode):
         defList = []
@@ -1265,7 +1277,22 @@ def export(context, x3dv_export_settings):
                 return base_color_tex.image
         return None
 
-    def b2xIndexedFaceSet(obj, mesh, mesh_name, matrix, world):
+    def find_texture_nodes_from_material(mtrl):
+        nodes = []
+        if not mtrl.node_tree:
+            return nodes
+        for node in mtrl.node_tree.nodes:
+            tex_node_types = ["IMAGE", "TEX_IMAGE", "TEX_ENVIRONMENT", "TEXTURE"]
+            if node.type not in tex_node_types:
+                continue
+            if not node.image:
+                continue
+            nodes.append(node)
+
+        return nodes
+
+    def b2xIndexedFaceSet(obj, mesh, mesh_name, matrix, world, image_textures):
+        global counter
         obj_id = unique_name(obj, OB_ + obj.name, uuid_cache_object, clean_func=clean_def, sep="_")
         mesh_id = unique_name(mesh, ME_ + mesh_name, uuid_cache_mesh, clean_func=clean_def, sep="_")
         mesh_id_group = prefix_str(mesh_id, group_)
@@ -1327,9 +1354,10 @@ def export(context, x3dv_export_settings):
                     for mtex in material.texture_slots:
                         if mtex:
                             tex = mtex.texture
-                            if tex and tex.type == 'IMAGE':
+                            if tex and tex.type in ["IMAGE", "TEX_IMAGE", "TEX_ENVIRONMENT", "TEXTURE"]:
                                 image = tex.image
                                 if image:
+                                    print(f"Image in Texture {image} use_h3d {use_h3d}")
                                     mesh_material_tex[i] = tex
                                     mesh_material_mtex[i] = mtex
                                     mesh_material_images[i] = image
@@ -1354,6 +1382,8 @@ def export(context, x3dv_export_settings):
             polygons_groups = {}
             for material_index in range(len(mesh_materials)):
                 for image in mesh_polygons_image_unique:
+                    if image:
+                        print(f"Image in mesh_polygons_image_unique {image}")
                     polygons_groups[material_index, image] = []
             del mesh_polygons_image_unique
 
@@ -1392,9 +1422,11 @@ def export(context, x3dv_export_settings):
                     polygons_to_loop_triangles_indices[ltri.polygon_index].append(ltri)
 
             for (material_index, image), polygons_group in polygons_groups.items():
+                if image:
+                    print(f"Image in for polygons groups loop {image} material index {material_index}")
                 if polygons_group:
                     material = mesh_materials[material_index]
-                    shape_id = unique_name(mesh, SH_ + mesh_name, uuid_cache_mesh, clean_func=clean_def, sep="_")
+                    shape_id = SH_ + mesh_name + counter.get_id()
                     shape = Shape(DEF=shape_id)
                     bottom.children.append(shape)
 
@@ -1431,11 +1463,22 @@ def export(context, x3dv_export_settings):
                     """
                     appr = Appearance()
                     shape.appearance = appr
-                    print(f" Image {image} use_h3d {use_h3d}")
-                    if image and not use_h3d:
+                    print(f"Image {image} obj {obj.name} type {obj.type}  use_h3d {use_h3d}")
+                    if image is None:
+                        image_id = IM_ + obj.name
+                        print(f"Image id {image_id}")
+                        if image_textures[obj]['used']:
+                            imt = ImageTexture(USE=image_id)
+                        else:
+                            image_textures[obj]['used'] = True
+                            url = image_textures[obj]['url']
+                            imt = ImageTexture(DEF=image_id, url=url)
+                            print(f"url {url}")
+                        appr.texture = imt
+                    elif image and not use_h3d:
                         imt = b2xImageTexture( image)
                         appr.texture = imt
-                        print(f" Appearance {appr} texture {appr.texture} url {appr.texture.url}")
+                        print(f"Appearance {appr} texture {appr.texture} url {appr.texture.url}")
                         # transform by mtex
                         # TODO
                         if 0:
@@ -1701,9 +1744,11 @@ def export(context, x3dv_export_settings):
                             for i in polygons_group:
                                 for lidx in mesh_polygons[i].loop_indices:
                                     # John patch
-                                    if len(mesh_loops_uv) > 0:
+                                    if lidx >= 0 and len(mesh_loops_uv) > 0 and lidx < len(mesh_loops_uv):   # TODO what if lidx is the length of the array?
                                         #fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
                                         texcoord.point.append(round_array_no_unit_scale(mesh_loops_uv[lidx].uv[:]))
+                                    else:
+                                        break
 
                         if is_col:
                             # Need better logic here, dynamic determination
@@ -2049,6 +2094,7 @@ def export(context, x3dv_export_settings):
     """
 
     def b2xImageTexture(image):
+        bpy.ops.object.mode_set(mode="EDIT")
         image_id = unique_name(image, IM_ + image.name, uuid_cache_image, clean_func=clean_def, sep="_")
 
         if image.tag:
@@ -2056,9 +2102,18 @@ def export(context, x3dv_export_settings):
             pass
         else:
             image.tag = True
-            if not image.filepath:
-                image.filepath = image_id[3:] + ".png"
             imt = ImageTexture(DEF=image_id)
+            if not image.filepath:
+                uv_dir = os.path.join(base_dst, 'uv')
+                if not os.path.isdir(uv_dir):
+                    os.mkdir(uv_dir)
+                else:
+                    print(f"{uv_dir} folder exists")
+                png_name = image.name+".png"
+                png_url = 'uv/' + png_name  # note forward slash of URL
+                png_path = os.path.join(uv_dir, png_name)
+                print(f"UV path is {png_path}")
+                image.filepath = png_path
 
             # collect image paths, can load multiple
             # [relative, name-only, absolute]
@@ -2086,6 +2141,7 @@ def export(context, x3dv_export_settings):
             except:
                 pass
             imt.url = ['%s' % escape(f) for f in images]
+        bpy.ops.object.mode_set(mode="OBJECT")
         return imt
 
     def b2xBackground(world):
@@ -2143,7 +2199,7 @@ def export(context, x3dv_export_settings):
             bg.skyColor = sky_triple
 
         for tex in bpy.data.textures:
-            if tex.type == 'IMAGE' and tex.image:
+            if tex.type in ["IMAGE", "TEX_IMAGE", "TEX_ENVIRONMENT", "TEXTURE"] and tex.image:
                 namemat = tex.name
                 pic = tex.image
                 basename = bpy.path.basename(pic.filepath)
@@ -2166,7 +2222,7 @@ def export(context, x3dv_export_settings):
     # -------------------------------------------------------------------------
     # blender to x3d Object Hierarchy (recursively called)
     # -------------------------------------------------------------------------
-    def b2x_object(obj_main_parent, obj_main, obj_children, x3dmodel_scene):
+    def b2x_object(obj_main_parent, obj_main, obj_children, x3dmodel_scene, image_textures):
         matrix_fallback = mathutils.Matrix()
         world = scene.world
         derived_dict = create_derived_objects(depsgraph, [obj_main])
@@ -2232,6 +2288,30 @@ def export(context, x3dv_export_settings):
                 else:
                     me = obj.data
                     do_remove = False
+                # Export all Mesh images
+                bpy.ops.object.mode_set(mode="EDIT")
+                if obj_type in {'MESH'}:
+                    obj.select_set(True)
+                    bpy.context.view_layer.objects.active = obj
+                    uv_dir = os.path.join(base_dst, 'uv')
+                    if not os.path.isdir(uv_dir):
+                        os.mkdir(uv_dir)
+                    else:
+                        print(f"{uv_dir} folder exists")
+                    png_name = obj.name+".png"
+                    png_url = 'uv/' + png_name  # note forward slash of URL
+                    png_path = os.path.join(uv_dir, png_name)
+                    print(f"UV path is {png_path}")
+                    bpy.ops.uv.export_layout(filepath=png_path, size=(1024, 1024), opacity=1)
+                    if obj in image_textures:
+                        image_textures[obj]['url'].append(png_url)
+                        
+                    else:
+                        image_textures[obj] = {}
+                        image_textures[obj]['used'] = False
+                        image_textures[obj]['url'] = [png_url]
+                bpy.ops.object.mode_set(mode="OBJECT")
+
 
                 if me is not None:
                     # ensure unique name, we could also do this by
@@ -2249,7 +2329,7 @@ def export(context, x3dv_export_settings):
                         mesh_name = me.name
                     # done
 
-                    node = b2xIndexedFaceSet(obj, me, mesh_name, obj_matrix, world)
+                    node = b2xIndexedFaceSet(obj, me, mesh_name, obj_matrix, world, image_textures)
                     if node != None:
                         bottom.children.append(node)
                     # free mesh created with to_mesh()
@@ -2275,7 +2355,7 @@ def export(context, x3dv_export_settings):
                 node = b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
                 prior_after = after
                 for obj_child, obj_child_children in obj_children:
-                    [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene)
+                    [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures)
                     for a in after:
                         prior_after.append(a)
                     if x3dnodelist:
@@ -2311,7 +2391,7 @@ def export(context, x3dv_export_settings):
             prior_after = after
             for obj_child, obj_child_children in obj_children:
                 # no need to combine after's
-                [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene)
+                [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures)
                 if x3dnodelist:
                     for x3dnode in x3dnodelist:
                         bottom.children.append(x3dnode)
@@ -2328,8 +2408,11 @@ def export(context, x3dv_export_settings):
     # -------------------------------------------------------------------------
     # Main Export Function
     # -------------------------------------------------------------------------
+
     def export_main():
         world = scene.world
+        image_textures = {}
+
         x3dmodel = X3D(profile='Immersive',version='4.0')
         x3dmodel.Scene = Scene()
         # tag un-exported IDs
@@ -2402,7 +2485,7 @@ def export(context, x3dv_export_settings):
         )
 
         for obj_main, obj_main_children in objects_hierarchy:
-            [ x3dnodelist, after ] = b2x_object(None, obj_main, obj_main_children, x3dmodel.Scene)
+            [ x3dnodelist, after ] = b2x_object(None, obj_main, obj_main_children, x3dmodel.Scene, image_textures)
             if x3dnodelist:
                 for x3dnode in x3dnodelist:
                     x3dmodel.Scene.children.append(x3dnode)
@@ -2611,6 +2694,7 @@ def blender2x3d(export_settings):
     ) # X3D model complete  
 
     return x3dmodel
+
 """
 
 def __is_empty_collection(value):

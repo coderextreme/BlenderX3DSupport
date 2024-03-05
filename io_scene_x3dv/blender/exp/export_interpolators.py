@@ -95,7 +95,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             # Write children
             for child_bone in my_children:
                 serialized_names.append(child_bone)
-                print(f"writing {child_bone}")
+                # print(f"writing {child_bone}")
                 write_recursive_nodes(child_bone)
 
         else:
@@ -113,7 +113,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     else:
         for child_bone in children[None]:
             serialized_names.append(child_bone)
-            print(f"writing {child_bone}")
+            # print(f"writing {child_bone}")
             write_recursive_nodes(child_bone)
 
     class DecoratedBone:
@@ -245,7 +245,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     b = 0
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
-        print(f"Creating interpolators for {bone.name}")
+        # print(f"Creating interpolators for {bone.name}")
         pbonename = prefix+bone.name.replace(":", "_")
         if bone.name == 'humanoid_root':
             pibonename = name+"_PI_"+bone.name.replace(":", "_")
