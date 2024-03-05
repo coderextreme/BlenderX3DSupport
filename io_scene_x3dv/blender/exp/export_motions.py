@@ -29,6 +29,9 @@ import random
 from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 
+def substitute(subs):
+    return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
+
 def write_animation(obj):  # pass armature object
 
     values = []
@@ -249,12 +252,12 @@ def write_animation(obj):  # pass armature object
         print("humanoid_root found in bone data, adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range((numbones + 1) * 3)])
         channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
-        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+bone.name.replace(":", "_").replace(" ", "_").replace(".", "_") for bone in armature.pose.bones if bone.name != "humanoid_root"))
+        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(subtitute(HANIM_DEF_PREFIX+bone.name) for bone in armature.pose.bones if bone.name != "humanoid_root"))
     else:
         print("humanoid_root not found in bone data, not adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
         channels=("3 Xrotation Yrotation Zrotation " * (numbones))
-        joints=(" ".join(HANIM_DEF_PREFIX+bone.name.replace(":", "_").replace(" ", "_").replace(".", "_") for bone in armature.pose.bones))
+        joints=(" ".join(substitute(HANIM_DEF_PREFIX+bone.name) for bone in armature.pose.bones))
 
     node = HAnimMotion(
         frameIncrement=1,

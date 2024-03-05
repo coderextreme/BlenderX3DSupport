@@ -29,6 +29,9 @@ import random
 from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 
+def substitute(subs):
+    return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
+
 def write_interpolators(obj, name, prefix):  # pass armature object
 
     root_found = False
@@ -38,7 +41,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             name = ""
         else:
             node.name = name
-        node.DEF = prefix+name.replace(":", "_").replace(" ", "_").replace(".", "_")
+        node.DEF = substitute(prefix+name)
 
     def ensure_rot_order(rot_order_str):
         if set(rot_order_str) != {'X', 'Y', 'Z'}:
@@ -226,10 +229,10 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     numbones = len(armature.pose.bones)
     frame_range = [frame_current, frame_end]
     time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
-    clock_name = name+"_Clock".replace(":", "_").replace(" ", "_").replace(".", "_")
+    clock_name = substitute(name+"_Clock")
     setUSEDEF(clock_name, None, time_sensor)
     activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
-    activate_name = name+"_Close".replace(":", "_").replace(" ", "_").replace(".", "_")
+    activate_name = substitute(name+"_Close")
     setUSEDEF(activate_name, None, activate_sensor)
     activate_route = ROUTE(
             fromNode=activate_name,
@@ -246,9 +249,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
         # print(f"Creating interpolators for {bone.name}")
-        pbonename = prefix+bone.name.replace(":", "_").replace(" ", "_").replace(".", "_")
+        pbonename = substitute(prefix+bone.name)
         if bone.name == 'humanoid_root':
-            pibonename = name+"_PI_"+bone.name.replace(":", "_").replace(" ", "_").replace(".", "_")
+            pibonename = substitute(name+"_PI_"+bone.name)
             posInterp = PositionInterpolator()
             setUSEDEF(name+"_PI_", bone.name, posInterp)
             positionInterpolators.append(posInterp)
@@ -267,7 +270,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         rotInterp = OrientationInterpolator()
         setUSEDEF(name+"_OI_", bone.name, rotInterp)
         orientationInterpolators.append(rotInterp)
-        oibonename = name+"_OI_"+bone.name.replace(":", "_").replace(" ", "_").replace(".", "_")
+        oibonename = substitute(name+"_OI_"+bone.name)
         orientationRoutes.append(ROUTE(
             fromNode=clock_name,
             fromField="fraction_changed",
