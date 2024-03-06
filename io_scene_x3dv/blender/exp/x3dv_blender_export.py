@@ -314,7 +314,6 @@ def build_hierarchy(objects):
     return par_lookup.get(None, [])
 
 
-""" 
 # -----------------------------------------------------------------------------
 # H3D Functions
 # -----------------------------------------------------------------------------
@@ -337,7 +336,7 @@ def h3d_shader_glsl_frag_patch(filepath, scene, global_vars, frag_uniform_var_ma
             w = l.split(', ')
             last_transform = w[1] + "_transform"  # XXX - HACK!!!
             w[1] = '(view_matrix * %s_transform * vec4(%s.x, %s.y, %s.z, 1.0)).xyz' % (w[1], w[1], w[1], w[1])
-            l = ", ".join(w)
+            l = ', '.join(w)
         elif l.lstrip().startswith("light_visibility_sun_hemi("):
             w = l.split(', ')
             w[0] = w[0][len("light_visibility_sun_hemi(") + 1:]
@@ -369,7 +368,6 @@ def h3d_shader_glsl_frag_patch(filepath, scene, global_vars, frag_uniform_var_ma
     h3d_file.writelines(lines)
     h3d_file.close()
 
-
 def h3d_is_object_view(scene, obj):
     camera = scene.camera
     parent = obj.parent
@@ -378,28 +376,27 @@ def h3d_is_object_view(scene, obj):
             return True
         parent = parent.parent
     return False
-"""
 
 # -----------------------------------------------------------------------------
 # Functions for writing output file
 # -----------------------------------------------------------------------------
 def export(context, x3dv_export_settings):
     """
-           file,
-           global_matrix,
-           depsgraph,
-           scene,
-           view_layer,
-           use_mesh_modifiers=False,
-           use_selection=True,
-           use_triangulate=False,
-           use_normals=False,
-           use_hierarchy=True,
-           use_h3d=False,
-           path_mode='AUTO',
-           name_decorations=True,
-           round_precision=16
-           ):
+    file,
+    global_matrix,
+    depsgraph,
+    scene,
+    view_layer,
+    use_mesh_modifiers=False,
+    use_selection=True,
+    use_triangulate=False,
+    use_normals=False,
+    use_hierarchy=True,
+    use_h3d=False,
+    path_mode='AUTO',
+    name_decorations=True,
+    round_precision=16
+    ):
     """
     export_settings = x3dv_export_settings
     scene = context.scene
@@ -513,7 +510,7 @@ def export(context, x3dv_export_settings):
         if copyright is None:
             copyright = 2024
         hd = head()
-        conversionFactor=getscenescale(bpy.context.scene)
+        conversionFactor=getscenescale(context.scene)
     
         hd.children.append(component(name='HAnim', level=3))
         if conversionFactor != 1:
@@ -790,8 +787,11 @@ def export(context, x3dv_export_settings):
                   children = []
                   if obj.type == 'ARMATURE':
                       armature = obj
-                      bpy.context.view_layer.objects.active = armature
-                      bpy.ops.object.mode_set(mode='POSE')
+                      view_layer.objects.active = armature
+                      try:
+                          bpy.ops.object.mode_set(mode='POSE')
+                      except:
+                          pass
                       children = write_interpolators(obj, name, HANIM_DEF_PREFIX)
                   return children
 #              case     "HAnimInterpolatorsOld":
@@ -799,7 +799,7 @@ def export(context, x3dv_export_settings):
 #                  children = []
 #                  if obj.type == 'ARMATURE':
 #                      armature = obj
-#                      bpy.context.view_layer.objects.active = armature
+#                      view_layer.objects.active = armature
 #                      bpy.ops.object.mode_set(mode='POSE')
 #                      print(f"Activated armature {armature} in pose mode")
 #                      if armature:
@@ -862,11 +862,11 @@ def export(context, x3dv_export_settings):
 #                                        print("humanoid_root not found in bone data")
 #                                    root_found = False
 #                                    lasttime = range(int(action.frame_range.x), int(action.frame_range.y) + 1)[-1]
-#                                    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
+#                                    keyframe_length = (frame_range[1] - frame_range[0]) / scene.render.fps
 #                                    keyframe_time = 0
 #                                    for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
 #                                        # frame is frame number
-#                                        bpy.context.scene.frame_set(frame)
+#                                        scene.frame_set(frame)
 #                                        print(f"Exporting interpolator frame {frame}")
 #                                        for b in range(numbones):
 #                                            bone = armature.pose.bones[b]
@@ -912,15 +912,18 @@ def export(context, x3dv_export_settings):
                   node = None
                   if obj.type == 'ARMATURE':
                       armature = obj
-                      bpy.context.view_layer.objects.active = armature
-                      bpy.ops.object.mode_set(mode='POSE')
+                      view_layer.objects.active = armature
+                      try:
+                        bpy.ops.object.mode_set(mode='POSE')
+                      except:
+                        pass
                       node = write_animation(obj)
                   return node
 #              case     "HAnimMotionOld":
 #                  print(f"Exporting motion of {tag} {obj.type}")
 #                  if obj.type == 'ARMATURE':
 #                      armature = obj
-#                      bpy.context.view_layer.objects.active = armature
+#                      view_layer.objects.active = armature
 #                      bpy.ops.object.mode_set(mode='POSE')
 #                      print(f"Activated armature {armature}")
 #                      if armature:
@@ -935,7 +938,7 @@ def export(context, x3dv_export_settings):
 #                                    root_found = False
 #                                    for frame in range(int(action.frame_range.x), int(action.frame_range.y) + 1):
 #                                        # frame is frame number
-#                                        bpy.context.scene.frame_set(frame)
+#                                        scene.frame_set(frame)
 #                                        print(f"Exporting values frame {frame}")
 #                                        for bone in armature.pose.bones:
 #                                            bone.rotation_mode = 'XZY'
@@ -947,7 +950,7 @@ def export(context, x3dv_export_settings):
 #                                                root_found = True
 #                                            eul = bone.rotation_euler
 #                                            rot = [ eul.x, eul.y, eul.z ]
-#                                            if bpy.context.scene.unit_settings.system_rotation == 'DEGREES':
+#                                            if scene.unit_settings.system_rotation == 'DEGREES':
 #                                                r = round_array_no_unit_scale([math.radians(rot[0]), math.radians(rot[1]),math.radians(rot[2])])
 #                                                values.append(r[0]) # rotation_euler
 #                                                values.append(r[1]) # rotation_euler
@@ -1062,44 +1065,47 @@ def export(context, x3dv_export_settings):
                 except:
                     joint_lookup[parent_name]['joint_children'].append(self)
 
-    def b2xFindCoordinate(x3dnode):
-        defList = []
+    def b2xFindSkinCoordPoint(x3dnode):
+        point = []
         children = None
-        if (isinstance(x3dnode, Group)):
+        typestr = type(x3dnode)
+        print_console('INFO', f"type {typestr}")
+        typename = str(typestr)
+        lastqut = typename.rfind("'");
+        lastdot = typename.rfind(".")+1;
+        acttype = typename[lastdot:lastqut]
+
+        print_console('INFO', f"name {typename}")
+        print_console('INFO', f"actual type {acttype}")
+        if   acttype in [ "Group", "Transform", "ImageTexture", "Appearance" ]:
             children = x3dnode.children
-        elif (isinstance(x3dnode, Transform)):
-            children = x3dnode.children
-        elif (isinstance(x3dnode, ImageTexture)):
-            children = x3dnode.children
-        elif (isinstance(x3dnode, Appearance)):
-            children = x3dnode.children
-        elif (isinstance(x3dnode, Shape)):
+        elif acttype in [ "Shape" ]:
             children = [x3dnode.geometry]
-        elif (isinstance(x3dnode, (IndexedFaceSet, IndexedLineSet, IndexedTriangleFanSet, IndexedTriangleSet, IndexedTriangleStripSet, PointSet, TriangleFanSet, TriangleSet, TriangleStripSet))):
+        elif acttype in [ "IndexedFaceSet", "IndexedLineSet", "IndexedTriangleFanSet", "IndexedTriangleSet", "IndexedTriangleStripSet", "PointSet", "TriangleFanSet", "TriangleSet", "TriangleStripSet" ]:
             children = [x3dnode.coord]
-        elif (isinstance(x3dnode, Coordinate)):
-            if x3dnode.DEF is not None:
-                defList.append(x3dnode.DEF)
-            else:
-                try:
-                    defList.append(x3dnode.name)
-                except:
-                    defList.append("coords_dummy_replace_with_Coordinate_DEF")
+        elif acttype in [ "Coordinate" ]:
+                print_console('INFO', f"{point} + {x3dnode.point}")
+                point = point + x3dnode.point
         if children is not None:
             for child in children:
-                defList = defList + b2xFindCoordinate(child)
-        return defList
+                point = point + b2xFindSkinCoordPoint(child)
+                print_console('INFO', f"Result point {point}")
+        return point
 
     def b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world):
         armature = obj
         armature_matrix = obj_matrix
-        print(f"Info: Called b2xArmature, exporting {armature.name}, object type {armature.type}")
+        print_console('INFO', f"Called b2xArmature, exporting {armature.name}, object type {armature.type}")
         segment_lookup = JointsSegments
 
         # each armature needs their own hierarchy
         joint_lookup = {}
-        bpy.context.view_layer.objects.active = armature
-        bpy.ops.object.mode_set(mode='OBJECT')
+        view_layer.objects.active = armature
+        # armature.select_set(True)
+        try:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        except:
+            pass
         #armature_id = quoteattr(HANIM_DEF_PREFIX+armature.parent.name)
         motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
         # motions = None
@@ -1121,118 +1127,6 @@ def export(context, x3dv_export_settings):
         armature_bones = {bone.name for bone in armature.data.bones}
                 #break
             
-        """
-        # get the mapping from group indices to bones
-        # TDOO onnly work on a one MESH file
-        # https://blenderartists.org/t/script-that-normalize-only-bones-weight-in-vertex-groups/557887
-        skinCoordInfo = {}
-
-        for obj in bpy.context.scene.objects:
-            if obj.type == 'MESH':
-                obj.select_set(True)
-                bpy.context.view_layer.objects.active = obj
-                bpy.ops.object.mode_set(mode='OBJECT') # ('OBJECT', 'EDIT', 'SCULPT', 'VERTEX_PAINT', 'WEIGHT_PAINT', 'TEXTURE_PAINT')
-
-
-        obj = bpy.context.active_object
-        mesh = bpy.data.objects[obj.name].data
-        mesh_name = bpy.data.objects[obj.name].data.name
-        listbones = {}
-        b=0
-
-
-        ## check the armature attached to the object
-        for modifiers in bpy.data.objects[obj.name].modifiers:
-            if modifiers.type == 'ARMATURE':
-                data = bpy.data.objects[modifiers.object.name].data.name
-                for bones in bpy.data.armatures[data].bones:
-                    #print(f"Listing bones {bones.name}")
-                    listbones[bones.name] = b
-                    b+=1
-
-
-        ## create the dict for the groups attache the index to the name
-        DictGroup = {} ##ask the index it will give you the name
-
-        i=0
-        for group in bpy.context.active_object.vertex_groups:
-            #print(f"Listing group {group.name}")
-            DictGroup[i]=group.name
-            i+=1
-
-        if bpy.context.mode == 'OBJECT':
-            for vertex in bpy.data.meshes[mesh_name].vertices: ##in each vertex of the mesh
-                total_weight=0 ##where to add the total of unlock
-                space_left=1 ##goal less the locked ones
-
-                for group in vertex.groups: #first loop to calculate the total weight and the space allowed if some are locked
-                    if DictGroup[group.group] in listbones: ##if it's a bone
-                        # group.weight
-                        # print("this is a bone " + str(DictGroup[group.group]))
-                        pass
-                    else:
-                        print("this is not a bone group " + str(DictGroup[group.group]))
-
-                for group in vertex.groups: #second on is to assign the new weight
-                    if DictGroup[group.group] in listbones:
-                        if not obj.vertex_groups[DictGroup[group.group]].lock_weight: ##if it's not locked!
-                            this_weight = group.weight
-                            # print(f"OBJECT bone {DictGroup[group.group]} index {vertex.index} weight {this_weight}")
-                            group_bone = DictGroup[group.group]
-                            try:
-                                if skinCoordInfo[group_bone] is None:
-                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-                            except:
-                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-                            skinCoordInfo[group_bone]['indices'].append(vertex.index)
-                            skinCoordInfo[group_bone]['weights'].append(this_weight)
-
-                            # obj.vertex_groups[DictGroup[group.group]].add([vertex.index],new_weight,'REPLACE')
-
-        if bpy.context.mode == 'EDIT_MESH':
-            myVertex = {}
-            v=0
-            bpy.ops.object.mode_set(mode='OBJECT')
-            for vertex in bpy.data.meshes[mesh_name].vertices:
-                if vertex.select==True:
-                    myVertex[v]=vertex.index
-                    v+=1
-
-            for each in myVertex:
-                for group in mesh.vertices[myVertex[each]].groups: #first loop to calculate the total weight and the space allowed if some are locked
-                    # print(group.weight)
-                    if DictGroup[group.group] in listbones: ##if it's a bone
-                        #print("this is a bone " + str(DictGroup[group.group]))
-                        pass
-                    else:
-                        print("this is not a bone group " + str(DictGroup[group.group]))
-
-                for group in mesh.vertices[myVertex[each]].groups: #second on is to assign the new weight
-                    if DictGroup[group.group] in listbones:
-                        if not obj.vertex_groups[DictGroup[group.group]].lock_weight: ##if it's not locked!
-                            this_weight = group.weight
-                            # print(f"EDIT MESH bone {DictGroup[group.group]} index {myVertex[each]} weight {this_weight}")
-                            group_bone = DictGroup[group.group]
-                            try:
-                                if skinCoordInfo[group_bone] is None:
-                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-                            except:
-                                    skinCoordInfo = {**skinCoordInfo, group_bone : { 'indices' : [], 'weights': []}}
-                            skinCoordInfo[group_bone]['indices'].append(vertex.index)
-                            skinCoordInfo[group_bone]['weights'].append(this_weight)
-
-        bpy.ops.object.mode_set(mode='EDIT')
-        for group_bone in skinCoordInfo:
-            try:
-                info = skinCoordInfo[group_bone]
-                print(f"\n<{group_bone}>\n")
-                indices = info['indices']
-                weights = info['weights']
-                for i in range(len(info['indices'])):
-                    print(f"({indices[i]}) = {weights[i]}")
-            except:
-                pass
-        """
         # get the mapping from group indices to bones
         skinCoordInfo = {}
         for obj in bpy.data.objects:
@@ -1258,7 +1152,7 @@ def export(context, x3dv_export_settings):
                                     
                                 skinCoordInfo[group_bone]['weights'].append(group.weight)
                             else:
-                                print('\t', 'NOT A BONE:', group_bone, group.weight)
+                                print_console('INFO', f"\tNOT A BONE: {group_bone}, {group.weight}")
         humanoid.skeleton = [b2xJoint(obj_main, armature, armature_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
         for joint in armature.data.bones:
@@ -1266,10 +1160,10 @@ def export(context, x3dv_export_settings):
                 node = HAnimJoint()
                 setUSEDEF(substitute(HANIM_DEF_PREFIX+joint.name), None, node)
                 humanoid.joints.append(node)
-        scale = 1 # getscenescale(bpy.context.scene)
-        unit_settings = bpy.context.scene.unit_settings
-        length_unit = bpy.context.scene.unit_settings.length_unit 
-        print(f"scene scale is {scale} {unit_settings} {length_unit}")
+        scale = 1 # getscenescale(scene)
+        unit_settings = scene.unit_settings
+        length_unit = scene.unit_settings.length_unit 
+        print_console('INFO', f"scene scale is {scale} {unit_settings} {length_unit}")
         return humanoid
 
     def image_get(mat):
@@ -1295,12 +1189,17 @@ def export(context, x3dv_export_settings):
 
         return nodes
 
+    def b2xCoordinate(DEF=None, USE=None, point=None):
+        coord = Coordinate(DEF=DEF, USE=USE, point=point)
+        return coord
+
     def b2xIndexedFaceSet(obj, mesh, mesh_name, matrix, world, image_textures):
         global counter
         obj_id = unique_name(obj, OB_ + obj.name, uuid_cache_object, clean_func=clean_def, sep="_")
         mesh_id = unique_name(mesh, ME_ + mesh_name, uuid_cache_mesh, clean_func=clean_def, sep="_")
         mesh_id_group = prefix_str(mesh_id, group_)
         mesh_id_coords = prefix_str(mesh_id, 'coords_')
+        print_console('INFO', f"Adding coords {mesh_id_coords}")
         mesh_id_normals = prefix_str(mesh_id, 'normals_')
 
         # Be sure tessellated loop triangles are available!
@@ -1454,7 +1353,7 @@ def export(context, x3dv_export_settings):
                             if 1:  # XXX DEBUG
                                 gpu_shader_tmp = gpu.export_shader(scene, material)
                                 import pprint
-                                print('\nWRITING MATERIAL:', material.name)
+                                print_console('INFO', f"\nWRITING MATERIAL: {material.name}")
                                 del gpu_shader_tmp['fragment']
                                 del gpu_shader_tmp['vertex']
                                 pprint.pprint(gpu_shader_tmp, width=120)
@@ -1472,12 +1371,12 @@ def export(context, x3dv_export_settings):
                             image_textures[obj]['used'] = True
                             url = image_textures[obj]['url']
                             imt = ImageTexture(DEF=image_id, url=url)
-                            print(f"url {url}")
+                            print_console('INFO', f"url {url}")
                         appr.texture = imt
                     elif image and not use_h3d:
                         [ imt, image_id ] = b2xImageTexture( image)
                         appr.texture = imt
-                        print(f"Appearance {appr} texture {appr.texture} url {appr.texture.url}")
+                        print_console('INFO', f"Appearance {appr} texture {appr.texture} url {appr.texture.url}")
                         # transform by mtex
                         # TODO
                         if 0:
@@ -1598,8 +1497,9 @@ def export(context, x3dv_export_settings):
                             #fw('%i %i %i ' % (x3d_f[0][2], x3d_f[1][2], x3d_f[2][2]))
                             its.index.append((x3d_f[0][2], x3d_f[1][2], x3d_f[2][2]))
 
-                        coord = Coordinate()
+                        coord = b2xCoordinate(DEF=mesh_id_coords)
                         its.coord = coord
+                        its.coord.point = []
 
                         #fw('%s<Coordinate ' % ident)
                         #fw('point="')
@@ -1713,18 +1613,13 @@ def export(context, x3dv_export_settings):
                         # --- Write IndexedFaceSet Elements
                         if True:
                             if is_coords_written:
-                                coord = Coordinate( USE=mesh_id_coords )
-                                ifs.coord = coord
+                                ifs.coord = b2xCoordinate(USE=mesh_id_coords)
                                 if export_settings['x3dv_normals']:
-                                    norms = Normal(USE = mesh_id_normals)
-                                    ifs.normal = norms
+                                    ifs.normal = Normal(USE=mesh_id_normals)
                             else:
-                                coord = Coordinate(DEF = mesh_id_coords)
-                                coord.DEF = mesh_id_coords
-                                ifs.coord = coord
+                                ifs.coord = b2xCoordinate(DEF=mesh_id_coords)
+                                ifs.coord.point = []
                                 for v in mesh.vertices:
-                                    #fw('%.6f %.6f %.6f ' % v.co[:])
-                                    #ifs.coord.point.append(v.co[:])
                                     vco = [ None, None, None ]
                                     vco[0] = v.co[0]
                                     vco[1] = v.co[1]
@@ -1732,15 +1627,13 @@ def export(context, x3dv_export_settings):
                                     loc = round_array(vco)
                                     ifs.coord.point.append(loc[:])
 
-                                is_coords_written = True
-
                                 if export_settings['x3dv_normals']:
-                                    norms = Normal(DEF = mesh_id_normals)
-                                    ifs.normal = norms
-
+                                    ifs.normal = Normal(DEF=mesh_id_normals)
+                                    ifs.normal.vector = []
                                     for v in mesh.vertices:
-                                        #fw('%.6f %.6f %.6f ' % v.normal[:])
                                         ifs.normal.vector.append(round_array_no_unit_scale(v.normal[:]))
+
+                                is_coords_written = True
 
                         if is_uv:
                             i = 0
@@ -2121,7 +2014,10 @@ def export(context, x3dv_export_settings):
     """
 
     def b2xImageTexture(image):
-        bpy.ops.object.mode_set(mode="EDIT")
+        try:
+            bpy.ops.object.mode_set(mode="EDIT")
+        except:
+            pass
         image_id = unique_name(image, IM_ + image.name, uuid_cache_image, clean_func=clean_def, sep="_")
 
         if image.tag:
@@ -2135,11 +2031,11 @@ def export(context, x3dv_export_settings):
                 if not os.path.isdir(uv_dir):
                     os.mkdir(uv_dir)
                 else:
-                    print(f"{uv_dir} folder exists")
+                    print_console('INFO', f"{uv_dir} folder exists")
                 png_name = image.name+".png"
                 png_url = 'uv/' + png_name  # note forward slash of URL
                 png_path = os.path.join(uv_dir, png_name)
-                print(f"UV path is {png_path}")
+                print_console('INFO', f"UV path is {png_path}")
                 image.filepath = png_path
 
             # collect image paths, can load multiple
@@ -2162,13 +2058,16 @@ def export(context, x3dv_export_settings):
 
             #fw(ident_step + "url='%s'\n" % ' '.join(['%s' % escape(f) for f in images]))
             try:
-                print(f"Saving {image.url}")
+                print_console('INFO', f"Saving {image.url}")
                 image.save()
-                print(f"Saved {image.url}")
+                print_console('INFO', f"Saved {image.url}")
             except:
                 pass
             imt.url = ['%s' % escape(f) for f in images]
-        bpy.ops.object.mode_set(mode="OBJECT")
+        try:
+            bpy.ops.object.mode_set(mode="OBJECT")
+        except:
+            pass
         return [ imt, image_id ]
 
     def b2xBackground(world):
@@ -2316,20 +2215,25 @@ def export(context, x3dv_export_settings):
                     me = obj.data
                     do_remove = False
                 # Export all Mesh images
-                bpy.ops.object.mode_set(mode="EDIT")
-                if obj_type in {'MESH'}:
-                    obj.select_set(True)
+                try:
                     bpy.context.view_layer.objects.active = obj
+                    bpy.ops.object.mode_set(mode="EDIT")
+                    bpy.ops.mesh.select_all(action='TOGGLE')
+                    bpy.ops.mesh.select_all(action='TOGGLE')
+                except:
+                    pass
+                if obj_type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
+                    obj.select_set(True)
                     uv_dir = os.path.join(base_dst, 'uv')
                     if not os.path.isdir(uv_dir):
                         os.mkdir(uv_dir)
                     else:
-                        print(f"{uv_dir} folder exists")
+                        print_console('INFO', f"{uv_dir} folder exists")
                     png_name = obj.name+".png"
                     png_url = 'uv/' + png_name  # note forward slash of URL
                     png_path = os.path.join(uv_dir, png_name)
-                    print(f"UV path is {png_path}")
-                    bpy.ops.uv.export_layout(filepath=png_path, opacity=1)
+                    print_console('INFO', f"UV path is {png_path}")
+                    # bpy.ops.uv.export_layout(filepath=png_path, mode='PNG', size=(4096, 4096), opacity=1)
                     if obj in image_textures:
                         image_textures[obj]['url'].append(png_url)
                         
@@ -2337,7 +2241,11 @@ def export(context, x3dv_export_settings):
                         image_textures[obj] = {}
                         image_textures[obj]['used'] = False
                         image_textures[obj]['url'] = [png_url]
-                bpy.ops.object.mode_set(mode="OBJECT")
+                try:
+                    bpy.ops.object.mode_set(mode="OBJECT")
+                    bpy.ops.object.select_all(action='TOGGLE')
+                except:
+                    pass
 
 
                 if me is not None:
@@ -2381,35 +2289,38 @@ def export(context, x3dv_export_settings):
                 data = obj.data
                 node = b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
                 prior_after = after
+                point = []
                 for obj_child, obj_child_children in obj_children:
                     [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures)
+                    print_console('INFO', f"returned x3dnodelist {x3dnodelist} and {after}")
                     for a in after:
                         prior_after.append(a)
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
-                            x3dnode.scale = (1, 1, 1)
+                            # x3dnode.scale = (1, 1, 1)
                             # x3dnode.rotation = (0, 1, 0, 3.1416)
+                            # attach skin Humanoid.
+                            print_console('INFO', f"appending node {x3dnode} to\n{node.skin}")
                             node.skin.append(x3dnode)
-                            for coord in b2xFindCoordinate(x3dnode):
-                                # TODO handle skinCoord before skin
-                                node.skinCoord = Coordinate(USE=coord)  # only one SFNode is allowed.
+                            point = point + b2xFindSkinCoordPoint(x3dnode)
+                            print_console('INFO', f"skinCoord point found: {point}")
+                node.skinCoord = b2xCoordinate(DEF="JointSkinCoordPoints", point=point)
                 after = prior_after
                 if node != None:
                     bottom.children.append(node)
                 interpolators = b2xHAnimNode(obj, None, obj.name, "HAnimInterpolators")
-                print(f"Writing {len(interpolators)} nodes for animations.")
+                print_console('INFO', f"Writing {len(interpolators)} nodes for animations.")
                 for i in interpolators:
                     if isinstance(i, list):
-                        print(f"Writing {len(i)} sub-nodes for animations.")
+                        print_console('INFO', f"Writing {len(i)} sub-nodes for animations.")
                         for j in i:
                             after.append(j)
                     else:
-                        print(f"Writing {i} sub-node for animations.")
+                        print_console('INFO', f"Writing {i} sub-node for animations.")
                         after.append(i)
                 children_processed = True
             else:
-                print("Info: Ignoring [%s], object type [%s] not handle yet" % (obj.name,obj_type))
-                # pass
+                print_console('INFO', "Ignoring [%s], object type [%s], python type [%s] not handled yet" % (obj.name,obj_type,type(obj_type)))
 
         # ---------------------------------------------------------------------
         # write out children recursively
@@ -2429,7 +2340,7 @@ def export(context, x3dv_export_settings):
         if is_dummy_tx:
             is_dummy_tx = False
 
-        print(f"returning {len(after)} sub-nodes for animations.")
+        print_console('INFO', f"returning {len(after)} sub-nodes for animations.")
         return [ top.children, after ]
 
     # -------------------------------------------------------------------------
@@ -2453,7 +2364,7 @@ def export(context, x3dv_export_settings):
         else:
             objects = [obj for obj in view_layer.objects if obj.visible_get(view_layer=view_layer)]
 
-        print('Info: starting X3D export to %r...' % export_settings['x3dv_filepath'])
+        print_console('INFO', 'starting X3D export to %r...' % export_settings['x3dv_filepath'])
 
         x3dmodel.head = b2xHeader()
 
@@ -2523,7 +2434,7 @@ def export(context, x3dv_export_settings):
                 for x3dnode in x3dnodelist:
                     x3dmodel.Scene.children.append(x3dnode)
             if after:
-                print(f"appending {len(after)} sub-nodes for scene children.")
+                print_console('INFO', f"appending {len(after)} sub-nodes for scene children.")
                 for a in after:
                     x3dmodel.Scene.children.append(a)
         # swap_USEbeforeDEF(node=x3dmodel.Scene)
@@ -2546,7 +2457,7 @@ def export(context, x3dv_export_settings):
     # print(copy_set)
     bpy_extras.io_utils.path_reference_copy(copy_set)
 
-    print('Info: finished X3D export to %r' % export_settings['x3dv_filepath']) 
+    print_console('INFO', 'finished X3D export to %r' % export_settings['x3dv_filepath']) 
     return x3dmodel
 
 ##########################################################
@@ -2627,13 +2538,14 @@ def save_OLD(context,x3dv_export_settings):
 def save(context,export_settings):
     """Start the x3dv export and saves to content file."""
 
-    if bpy.context.active_object is not None:
-        if bpy.context.active_object.mode != "OBJECT": # For linked object, you can't force OBJECT mode
-            bpy.ops.object.mode_set(mode='OBJECT')
+    try:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    except:
+        pass
 
-    original_frame = bpy.context.scene.frame_current
+    original_frame = context.scene.frame_current
     if not export_settings['x3dv_current_frame']:
-        bpy.context.scene.frame_set(0)
+        context.scene.frame_set(0)
 
     __notify_start(context)
     start_time = time.time()
@@ -2652,7 +2564,7 @@ def save(context,export_settings):
     elif(format=='JSON'):
         blob = x3dmodel.JSON()
     else:
-        print("No file format given")
+        print_console('ERROR', "No file format given")
     __write_file(blob,export_settings)
 
 
@@ -2660,7 +2572,7 @@ def save(context,export_settings):
     __notify_end(context, end_time - start_time)
 
     if not export_settings['x3dv_current_frame']:
-        bpy.context.scene.frame_set(int(original_frame))
+        context.scene.frame_set(int(original_frame))
     return {'FINISHED'}
 
 """
