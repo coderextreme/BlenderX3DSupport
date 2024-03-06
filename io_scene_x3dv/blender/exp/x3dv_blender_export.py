@@ -1084,13 +1084,42 @@ def export(context, x3dv_export_settings):
         elif acttype in [ "IndexedFaceSet", "IndexedLineSet", "IndexedTriangleFanSet", "IndexedTriangleSet", "IndexedTriangleStripSet", "PointSet", "TriangleFanSet", "TriangleSet", "TriangleStripSet" ]:
             children = [x3dnode.coord]
         elif acttype in [ "Coordinate" ]:
-                print_console('INFO', f"{point} + {x3dnode.point}")
+                #print_console('INFO', f"{point} + {x3dnode.point}")
                 point = point + x3dnode.point
         if children is not None:
             for child in children:
                 point = point + b2xFindSkinCoordPoint(child)
-                print_console('INFO', f"Result point {point}")
+                #print_console('INFO', f"Result point {point}")
         return point
+
+    def b2xDEFedCoordinates(x3dnode):
+        DEFnodes = []
+        children = None
+        typestr = type(x3dnode)
+        #print_console('INFO', f"type {typestr}")
+        typename = str(typestr)
+        lastqut = typename.rfind("'");
+        lastdot = typename.rfind(".")+1;
+        acttype = typename[lastdot:lastqut]
+
+        #print_console('INFO', f"name {typename}")
+        print_console('INFO', f"actual type {acttype}")
+        if   acttype in [ "Group", "Transform", "ImageTexture", "Appearance" ]:
+            children = x3dnode.children
+        elif acttype in [ "Shape" ]:
+            children = [x3dnode.geometry]
+        elif acttype in [ "IndexedFaceSet", "IndexedLineSet", "IndexedTriangleFanSet", "IndexedTriangleSet", "IndexedTriangleStripSet", "PointSet", "TriangleFanSet", "TriangleSet", "TriangleStripSet" ]:
+            children = [x3dnode.coord]
+        elif acttype in [ "Coordinate" ]:
+            #print_console('INFO', f"coordinate {x3dnode}")
+            if (x3dnode.DEF):
+                DEFnodes = DEFnodes + [x3dnode]
+            #print_console('INFO', f"DEFnodes coordinate {DEFnodes}")
+        if children is not None:
+            for child in children:
+                #print_console('INFO', f"Summing nodes {DEFnodes}")
+                DEFnodes = DEFnodes + b2xDEFedCoordinates(child)
+        return DEFnodes
 
     def b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world):
         armature = obj
@@ -2289,7 +2318,6 @@ def export(context, x3dv_export_settings):
                 data = obj.data
                 node = b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
                 prior_after = after
-                point = []
                 for obj_child, obj_child_children in obj_children:
                     [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures)
                     print_console('INFO', f"returned x3dnodelist {x3dnodelist} and {after}")
@@ -2302,9 +2330,18 @@ def export(context, x3dv_export_settings):
                             # attach skin Humanoid.
                             print_console('INFO', f"appending node {x3dnode} to\n{node.skin}")
                             node.skin.append(x3dnode)
-                            point = point + b2xFindSkinCoordPoint(x3dnode)
-                            print_console('INFO', f"skinCoord point found: {point}")
-                node.skinCoord = b2xCoordinate(DEF="JointSkinCoordPoints", point=point)
+                            point = b2xFindSkinCoordPoint(x3dnode)
+                            DEFnodes = b2xDEFedCoordinates(x3dnode)
+                            #print_console('INFO', f"skinCoord point found: {point}")
+                            #print_console('INFO', f"skinCoord DEF: {DEFnodes}")
+                if len(DEFnodes) == 1:
+                    DEFname = DEFnodes[0].DEF
+                    DEFnodes[0].USE = DEFname 
+                    DEFnodes[0].DEF = None
+                    DEFnodes[0].point = None  # erase point from this.  VRML output is wrong from x3dv.py
+                else:
+                    DEFname = "JointsSkinCoordPoint"
+                node.skinCoord = b2xCoordinate(DEF=DEFname, point=point)
                 after = prior_after
                 if node != None:
                     bottom.children.append(node)
@@ -2320,7 +2357,7 @@ def export(context, x3dv_export_settings):
                         after.append(i)
                 children_processed = True
             else:
-                print_console('INFO', "Ignoring [%s], object type [%s], python type [%s] not handled yet" % (obj.name,obj_type,type(obj_type)))
+                print_console('INFO', "Ignoring [%s], object type [%s], python type [%s], data [%s] not handled yet" % (obj.name,obj_type,type(obj), type(obj.data)))
 
         # ---------------------------------------------------------------------
         # write out children recursively
