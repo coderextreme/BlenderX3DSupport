@@ -28,6 +28,7 @@ import random
 
 from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
+from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
 
 def substitute(subs):
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
@@ -110,7 +111,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         key = children[None][0]
         serialized_names.append(key)
 
-        print(f"writing only key {key}")
+        print_console('INFO', f"writing only key {key}")
         write_recursive_nodes(key)
 
     else:
@@ -222,9 +223,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
 
     key_divider = (frame_count - 1) * frame_count / scene.render.fps 
 
-    print("Frame count: %d\n" % frame_count)
-    print("Frame duration: %.6f\n" % frame_duration)
-    print("Key divider: %.6f\n" % key_divider)
+    print_console('INFO', "Frame count: %d\n" % frame_count)
+    print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
+    print_console('INFO', "Key divider: %.6f\n" % key_divider)
     armature = obj
     numbones = len(armature.pose.bones)
     frame_range = [frame_current, frame_end]
@@ -283,7 +284,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             toField="rotation"))
         b += 1
     if not root_found:
-        print("humanoid_root not found in bone data")
+        print_console('ERROR', "humanoid_root not found in bone data")
     root_found = False
     lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
     keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
@@ -340,10 +341,10 @@ def write_interpolators(obj, name, prefix):  # pass armature object
 
     scene.frame_set(frame_current)
     if not dbone.skip_position:
-        print("humanoid_root found in bone data")
+        print_console('INFO', "humanoid_root found in bone data")
         nodes.append(positionInterpolators[:])
         nodes.append(positionRoutes[:])
-    print(f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
+    print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
     nodes.append(time_sensor)
     nodes.append(activate_sensor)
     nodes.append(activate_route)

@@ -28,6 +28,7 @@ import random
 
 from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
+from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
 
 def substitute(subs):
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
@@ -208,8 +209,8 @@ def write_animation(obj):  # pass armature object
     frame_count = frame_end - frame_start + 1
     frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
 
-    print("Frame count: %d\n" % frame_count)
-    print("Frame duration: %.6f\n" % frame_duration)
+    print_console('INFO', "Frame count: %d\n" % frame_count)
+    print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
 
     for frame in range(frame_start, frame_end + 1):
         scene.frame_set(frame)
@@ -249,12 +250,12 @@ def write_animation(obj):  # pass armature object
     numbones = len(armature.pose.bones)
     HANIM_DEF_PREFIX = 'hanim_'
     if root_found:
-        print("humanoid_root found in bone data, adding position")
+        print_console('INFO', "humanoid_root found in bone data, adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range((numbones + 1) * 3)])
         channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
         joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(subtitute(HANIM_DEF_PREFIX+bone.name) for bone in armature.pose.bones if bone.name != "humanoid_root"))
     else:
-        print("humanoid_root not found in bone data, not adding position")
+        print_console('ERROR', "humanoid_root not found in bone data, not adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
         channels=("3 Xrotation Yrotation Zrotation " * (numbones))
         joints=(" ".join(substitute(HANIM_DEF_PREFIX+bone.name) for bone in armature.pose.bones))
