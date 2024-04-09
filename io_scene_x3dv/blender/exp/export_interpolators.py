@@ -290,6 +290,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
     keyframe_time = 0
 
+    skip = False
     for frame in range(frame_start, frame_end + 1):
         scene.frame_set(frame)
 
@@ -317,7 +318,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             rot = rot.to_axis_angle()  # convert Quaternion to Axis-Angle
             # print(f"Rotation {rot}")
 
-            if not dbone.skip_position:
+            if dbone.skip_position:
+                skip = True
+            else:
                 positionInterpolators[b].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
                 positionInterpolators[b].keyValue.append(round_array(loc)[:]) # location
 
@@ -340,7 +343,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         keyframe_time = keyframe_time + keyframe_length
 
     scene.frame_set(frame_current)
-    if not dbone.skip_position:
+    if not skip:
         print_console('INFO', "humanoid_root found in bone data")
         nodes.append(positionInterpolators[:])
         nodes.append(positionRoutes[:])
