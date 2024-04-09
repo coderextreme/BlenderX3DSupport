@@ -3210,9 +3210,9 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
     # Create bones for each joint
     for joint_name, joint_start, joint_end in joints:
         print(f"Joint  {joint_name} {joint_start} {joint_end}")
-        # bpy.ops.armature.bone_primitive_add(name=joint_name)
-        new_segment = armature_data.edit_bones.new(joint_name)
-        # new_segment = skeleton.data.edit_bones[joint_name]
+        bpy.ops.armature.bone_primitive_add(name=joint_name)
+        # new_segment = armature_data.edit_bones.new(joint_name)
+        new_segment = skeleton.data.edit_bones[joint_name]
         new_segment.head = joint_start
         new_segment.tail = joint_end
 
