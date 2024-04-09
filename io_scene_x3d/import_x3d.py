@@ -3179,6 +3179,71 @@ def importShape(bpycollection, node, ancestry, global_matrix):
     else:
         print('\tImportX3D warning: unsupported type "%s"' % geom_spec)
 
+def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
+    vrmlname = node.getDefName()
+    # print(vrmlname)
+    if not vrmlname:
+        vrmlname = 'HAnimHumanoid'
+
+    # Create armature and object
+    armature_data = bpy.data.armatures.new(vrmlname)
+    skeleton = bpy.data.objects.new(vrmlname, armature_data)
+
+    # Link object to collection and make it active
+    bpycollection.objects.link(skeleton)
+    bpy.context.view_layer.objects.active = skeleton
+    skeleton.select_set(True)
+
+    # Enter edit mode
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    # Store reference to the object on the node
+    node.blendData = node.blendObject = skeleton
+
+    # Process child joints
+    children = node.getChildrenBySpec('HAnimJoint')
+    joints = []
+    segments = []
+    joints.append((vrmlname, (0,0,0), (0,0,0)))
+    importHAnimJoints(joints, segments, children, ancestry, vrmlname)
+
+    # Create bones for each joint
+    for joint_name, joint_start, joint_end in joints:
+        print(f"Joint  {joint_name} {joint_start} {joint_end}")
+        # bpy.ops.armature.bone_primitive_add(name=joint_name)
+        new_segment = armature_data.edit_bones.new(joint_name)
+        # new_segment = skeleton.data.edit_bones[joint_name]
+        new_segment.head = joint_start
+        new_segment.tail = joint_end
+
+
+    for segment in segments:
+        parent_joint, child_joint = segment
+        print(f"Segment {parent_joint} {child_joint}")
+        parent = skeleton.data.edit_bones[parent_joint]
+        child = skeleton.data.edit_bones[child_joint]
+        child.parent = parent
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, parent_center=[0, 0, 0]):
+    for child in children:
+        child_bone_name = child.getDefName()
+        segments.append((parent_bone_name, child_bone_name))
+        importHAnimJoint(joints, segments, child, ancestry, parent_center)
+
+def importHAnimJoint(joints, segments, child, ancestry, parent_center=[0, 0, 0]):
+    bone_name = child.getDefName()
+    child_center = child.getFieldAsFloatTuple('center', None, ancestry)
+
+    if child_center:
+        joints.append((bone_name, (child_center[0], child_center[2], child_center[1]), (parent_center[0], parent_center[2], parent_center[1])))
+
+    children = child.getChildrenBySpec('HAnimJoint')
+    if children:
+        importHAnimJoints(joints, segments, children, ancestry, bone_name, child_center)
+
+
 
 # -----------------------------------------------------------------------------------
 # Lighting
@@ -3559,6 +3624,8 @@ def load_web3d(
             importLamp(bpycollection, node, spec, ancestry, global_matrix)
         elif spec == 'Viewpoint':
             importViewpoint(bpycollection, node, ancestry, global_matrix)
+        elif spec == 'HAnimHumanoid':
+            importHAnimHumanoid(bpycollection, node, ancestry, global_matrix)
         elif spec == 'Transform':
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
