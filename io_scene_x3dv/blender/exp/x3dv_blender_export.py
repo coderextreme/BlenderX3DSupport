@@ -719,30 +719,32 @@ def export(context, x3dv_export_settings):
                       if skinCoordWeight is not None:
                          node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   else:
-                      site_shape = Shape(
-                                        #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                                        #geometry=Box(size = (0.05, 0.05, 0.05))
-                              )
-                      setUSEDEF("", "SiteShape", site_shape)
+                      #site_shape = Shape(
+                      #                  #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+                      #                  #geometry=Box(size = (0.05, 0.05, 0.05))
+                      #        )
+                      #setUSEDEF("", "SiteShape", site_shape)
                       site = HAnimSite(# translation=loc[:],
-                                children=[
-                                Transform(
-                                    translation=center[:],
-                                    children=[
-                                        site_shape
-                                ])
-                            ])
+                          #children=[
+                          #    Transform(
+                          #        translation=center[:],
+                          #        children=[
+                          #            site_shape
+                          #        ]
+                          #    )
+                          #]
+                      )
                       setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_tip", site)
                       objname=substitute(obj.name)
                       segmentname=substitute(segment_name)
-                      joint_shape = Shape()
-                      setUSEDEF("", "JointShape", joint_shape)
+                      #joint_shape = Shape()
+                      #setUSEDEF("", "JointShape", joint_shape)
                       segment = HAnimSegment(children=[
-                          TouchSensor(description=f"joint {objname} segment {segmentname}"),
-                          Transform(translation=center[:],
-                              children=[
-                                  joint_shape
-                              ]),
+                            TouchSensor(description=f"joint {objname} segment {segmentname}"),
+                            #Transform(translation=center[:],
+                            #    children=[
+                            #        joint_shape
+                            #    ]),
                             #Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
                             #      geometry=LineSet(
                             #        vertexCount=2,
@@ -1041,15 +1043,15 @@ def export(context, x3dv_export_settings):
             return node
         else:
             site_name = joint.name
-            site_shape = Shape(
-                        #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                        #geometry=Box(size = (0.05, 0.05, 0.05))
-                    )
-            setUSEDEF("", "SiteShape", site_shape)
+            #site_shape = Shape(
+            #            #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+            #            #geometry=Box(size = (0.05, 0.05, 0.05))
+            #        )
+            #setUSEDEF("", "SiteShape", site_shape)
             site = HAnimSite(children=[
-                Transform( children=[
-                    site_shape
-                ])
+                #Transform( children=[
+                #    site_shape
+                #])
             ])
             setUSEDEF(HANIM_DEF_PREFIX, site_name, site)
             segment = HAnimSegment(children=[ site ])
@@ -1678,41 +1680,21 @@ def export(context, x3dv_export_settings):
                                 is_coords_written = True
 
                         if is_uv:
-                            i = 0
-                            lidx = 9048
-                            try:
-                                texcoord = TextureCoordinate()
-                                setUSEDEF("", TX_ + mesh_name, texcoord)
-                                ifs.texCoord = texcoord
-                                for i in polygons_group:
-                                    #print(f"OK 1 ! at mesh polygons group {i}")
-                                    for lidx in mesh_polygons[i].loop_indices:
-                                        # John patch
-                                        #print(f"OK 2 ! at mesh loop index {lidx}");
-                                        #if len(mesh_loops_uv) <= 0:
-                                        #    print(f"NOT OK 5 ! image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
-                                        #    raise IndexError()
-                                        #elif lidx < 0:
-                                        #    print(f"NOT OK 6 ! YOU'RE GOING HEAVILY INTO DEBT!  image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
-                                        #    raise IndexError()
-                                        #elif lidx > 1000000000:
-                                        #    print(f"NOT OK 7 ! YOU WIN THE JACKPOT! > 1 Billion smackeroos!  image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
-                                        #    raise IndexError()
-                                        #elif i == 501 and lidx == 9048:
-                                        #    raise IndexError()
-                                        #    print(f"NOT OK 8 ! image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
-                                        if len(mesh_loops_uv) > 0:
-                                        #   fw('%.4f %.4f ' % mesh_loops_uv[lidx].uv[:])
-                                        #   print(f"OK 3 ! at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
+                            texcoord = TextureCoordinate()
+                            setUSEDEF("", TX_ + mesh_name, texcoord)
+                            ifs.texCoord = texcoord
+                            error_printed = False
+                            for i in polygons_group:
+                                for lidx in mesh_polygons[i].loop_indices:
+                                    if len(mesh_loops_uv) > 0:
+                                        try:
                                             texcoord.point.append(round_array_no_unit_scale(mesh_loops_uv[lidx].uv))   # TODO array out of bounds IndexError
-                                        #else:
-                                        #    print(f"NOT OK 4 ! image {image_id} mesh {mesh_name} at len {len(mesh_loops_uv)}, mesh polygons group {i}, mesh loop index {lidx}")
-                                        #    raise IndexError()
-                            except IndexError:
-                                print(f"ERROR: !!!!!!!!!!!! Array index out of bounds; image {image_id} mesh {mesh_name} at mesh polygons group {i}, mesh loop index {lidx}")
-                                texcoord.point.append(round_array_no_unit_scale([0, 0]))
-                                pass
-
+                                        except IndexError:
+                                            # only print first error
+                                            if not error_printed:
+                                                print(f"ERROR: !!!!!!!!!!!! Array index out of bounds; image {image_id} mesh {mesh_name} at mesh polygons group {i}, mesh loop index {lidx}")
+                                                error_printed = True
+                                            texcoord.point.append(round_array_no_unit_scale([0, 0]))
                         if is_col:
                             # Need better logic here, dynamic determination
                             # which of the X3D coloring models fits better this mesh - per face
@@ -2256,7 +2238,7 @@ def export(context, x3dv_export_settings):
                         me = obj_for_mesh.to_mesh()
                     except:
                         me = None
-                    do_remove = True
+                    do_remove = True  # I changed this JWC
                 else:
                     me = obj.data
                     do_remove = False
@@ -2444,20 +2426,20 @@ def export(context, x3dv_export_settings):
         x3dmodel.Scene.children.append(
             PointLight(location=(0, 0, 10))
         )
-        site_shape = Shape(
-                    geometry=Box(size = (0.05, 0.05, 0.05)),
-                    appearance=Appearance(
-                        material=Material(
-                            diffuseColor = (0, 0, 1, 0),
-                            transparency = 1
-                        ))
-                )
-        setUSEDEF("", "SiteShape", site_shape)
-        x3dmodel.Scene.children.append(
-            Transform( children=[
-                site_shape
-            ])
-        )
+        #site_shape = Shape(
+        #            geometry=Box(size = (0.05, 0.05, 0.05)),
+        #            appearance=Appearance(
+        #                material=Material(
+        #                    diffuseColor = (0, 0, 1, 0),
+        #                    transparency = 1
+        #                ))
+        #        )
+        #setUSEDEF("", "SiteShape", site_shape)
+        #x3dmodel.Scene.children.append(
+        #    Transform( children=[
+        #        site_shape
+        #    ])
+        #)
         #x3dmodel.Scene.children.append(
         #    Transform( children=[
         #        Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
@@ -2472,21 +2454,21 @@ def export(context, x3dv_export_settings):
         #    ])
         #)
 
-        joint_shape = Shape(
-                    geometry=Sphere(radius=0.06),
-                    appearance=Appearance(
-                        DEF="JointAppearance",
-                        material=Material(
-                            diffuseColor = (1, 0.5, 0, 0),
-                            transparency = 1
-                        ))
-                )
-        setUSEDEF("", "JointShape", joint_shape)
-        x3dmodel.Scene.children.append(
-            Transform( children=[
-                joint_shape
-            ])
-        )
+        #joint_shape = Shape(
+        #            geometry=Sphere(radius=0.06),
+        #            appearance=Appearance(
+        #                DEF="JointAppearance",
+        #                material=Material(
+        #                    diffuseColor = (1, 0.5, 0, 0),
+        #                    transparency = 1
+        #                ))
+        #        )
+        #setUSEDEF("", "JointShape", joint_shape)
+        #x3dmodel.Scene.children.append(
+        #   Transform( children=[
+        #       joint_shape
+        #   ])
+        #
 
         for obj_main, obj_main_children in objects_hierarchy:
             [ x3dnodelist, after ] = b2x_object(None, obj_main, obj_main_children, x3dmodel.Scene, image_textures)
