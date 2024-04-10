@@ -1900,14 +1900,21 @@ def importMesh_IndexedFaceSet(geom, ancestry):
 
     ccw = geom.getFieldAsBool('ccw', True, ancestry)
     coord = geom.getChildBySpec('Coordinate')
-    if coord.reference:
+    points = coord.getFieldAsArray('point', 3, ancestry)
+    if geom.node_type == NODE_REFERENCE:
+    #if coord.reference:
+        savepoints = points
         points = coord.getRealNode().parsed
+        if not points:
+            print(f"Points {points}, reference {coord.reference}, realCoord {coord.getRealNode()} realCoord.parsed {coord.getRealNode().parsed}, coord {coord}");
+            points = savepoints
+            coord.parsed = points
+            coord.getRealNode().parsed = points
         # We need unflattened coord array here, while
         # importMesh_ReadVertices uses flattened. Can't cache both :(
         # TODO: resolve that somehow, so that vertex set can be effectively
         # reused between different mesh types?
     else:
-        points = coord.getFieldAsArray('point', 3, ancestry)
         if coord.canHaveReferences():
             coord.parsed = points
     index = geom.getFieldAsArray('coordIndex', 0, ancestry)
@@ -1915,6 +1922,12 @@ def importMesh_IndexedFaceSet(geom, ancestry):
     while index and index[-1] == -1:
         del index[-1]
 
+    if points is None:
+        print("No point in either DEF or USE Coordinate")
+        #points = []
+    if index is None:
+        print("No coordIndex")
+        #index = []
     if len(points) >= 2 * len(index):  # Need to cull
         culled_points = []
         cull = {}  # Maps old vertex indices to new ones
@@ -2069,7 +2082,6 @@ def importMesh_IndexedFaceSet(geom, ancestry):
     bpymesh.validate()
     bpymesh.update()
     return bpymesh
-
 
 def importMesh_ElevationGrid(geom, ancestry):
     height = geom.getFieldAsArray('height', 0, ancestry)
@@ -3176,6 +3188,7 @@ def importShape(bpycollection, node, ancestry, global_matrix):
                 bpycollection, vrmlname, bpydata, geom, geom_spec,
                 node, bpymat, tex_has_alpha, texmtx,
                 ancestry, global_matrix)
+
     else:
         print('\tImportX3D warning: unsupported type "%s"' % geom_spec)
 
@@ -3198,50 +3211,88 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
     bpy.ops.object.mode_set(mode='EDIT')
 
     # Store reference to the object on the node
-    node.blendData = node.blendObject = skeleton
+    bpyob = node.blendData = node.blendObject = skeleton
+
 
     # Process child joints
-    children = node.getChildrenBySpec('HAnimJoint')
+    child = node.getChildBySpec('HAnimJoint')
     joints = []
     segments = []
-    joints.append((vrmlname, (0,0,0), (0,0,0)))
-    importHAnimJoints(joints, segments, children, ancestry, vrmlname)
+    # joints.append((vrmlname, (0,0,0), (0,0,0), (), ()))
+    importHAnimJoint(joints, segments, child, ancestry, vrmlname)
+
+    jointSkin = {}
 
     # Create bones for each joint
-    for joint_name, joint_start, joint_end in joints:
+    for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
         print(f"Joint  {joint_name} {joint_start} {joint_end}")
-        bpy.ops.armature.bone_primitive_add(name=joint_name)
-        # new_segment = armature_data.edit_bones.new(joint_name)
-        new_segment = skeleton.data.edit_bones[joint_name]
+        # bpy.ops.armature.bone_primitive_add(name=joint_name)
+        new_segment = armature_data.edit_bones.new(joint_name)
+        # new_segment = skeleton.data.edit_bones[joint_name]
         new_segment.head = joint_start
         new_segment.tail = joint_end
-
+        if joint_name != vrmlname:
+            jointSkin[joint_name] = {
+                        'skinCoordWeight' : skinCoordWeight,
+                        'skinCoordIndex' : skinCoordIndex
+                        }
+            # print(f"adding {jointSkin[joint_name]['skinCoordIndex']}, {jointSkin[joint_name]['skinCoordWeight']}")
 
     for segment in segments:
+        bpy.ops.object.mode_set(mode='EDIT')
         parent_joint, child_joint = segment
         print(f"Segment {parent_joint} {child_joint}")
-        parent = skeleton.data.edit_bones[parent_joint]
-        child = skeleton.data.edit_bones[child_joint]
+        if parent_joint in skeleton.data.edit_bones:
+            parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
+        else:
+            parent = None
+
+        if child_joint in skeleton.data.edit_bones:
+            child = skeleton.data.edit_bones[child_joint]
+        else:
+            child = None
         child.parent = parent
 
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH':
+                if obj.parent == skeleton:
+                    child_group = obj.vertex_groups.get(child_joint)
+                    if child_group is None:
+                        child_group = obj.vertex_groups.new(name=child_joint)
+                    for wi in range(len(jointSkin[child_joint]['skinCoordIndex'])):
+                        child_group.add([jointSkin[child_joint]['skinCoordIndex'][wi]], jointSkin[child_joint]['skinCoordWeight'][wi], 'REPLACE')
+
+
+    bpyob.matrix_world = getFinalMatrix(node, None, ancestry, global_matrix)
+
     bpy.ops.object.mode_set(mode='OBJECT')
+
+
 
 def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, parent_center=[0, 0, 0]):
     for child in children:
         child_bone_name = child.getDefName()
         segments.append((parent_bone_name, child_bone_name))
-        importHAnimJoint(joints, segments, child, ancestry, parent_center)
+        importHAnimJoint(joints, segments, child, ancestry, parent_bone_name, parent_center)
 
-def importHAnimJoint(joints, segments, child, ancestry, parent_center=[0, 0, 0]):
-    bone_name = child.getDefName()
+def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, parent_center=[0, 0, 0]):
+    child_bone_name = child.getDefName()
     child_center = child.getFieldAsFloatTuple('center', None, ancestry)
+    skinCoordWeight = child.getFieldAsArray('skinCoordWeight', 0, ancestry)
+    skinCoordIndex = child.getFieldAsArray('skinCoordIndex', 0, ancestry)
+    if skinCoordWeight is None:
+        skinCoordWeight = ()
+    if skinCoordIndex is None:
+        skinCoordIndex = ()
 
     if child_center:
-        joints.append((bone_name, (child_center[0], child_center[2], child_center[1]), (parent_center[0], parent_center[2], parent_center[1])))
+        joints.append((child_bone_name, (child_center[0], child_center[1], child_center[2]), (parent_center[0], parent_center[1], parent_center[2]), skinCoordWeight, skinCoordIndex))
 
     children = child.getChildrenBySpec('HAnimJoint')
     if children:
-        importHAnimJoints(joints, segments, children, ancestry, bone_name, child_center)
+        importHAnimJoints(joints, segments, children, ancestry, child_bone_name, child_center)
 
 
 
@@ -3264,7 +3315,7 @@ def importLamp_PointLight(node, ancestry):
 
     bpylamp = bpy.data.lights.new(vrmlname, 'POINT')
     bpylamp.energy = intensity
-    bpylamp.distance = radius
+    bpylamp.cutoff_distance = radius
     bpylamp.color = color
 
     mtx = Matrix.Translation(Vector(location))

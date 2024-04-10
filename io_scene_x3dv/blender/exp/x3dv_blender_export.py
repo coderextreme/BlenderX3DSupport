@@ -206,7 +206,7 @@ H3D_TOP_LEVEL = 'TOP_LEVEL_TI'
 H3D_CAMERA_FOLLOW = 'CAMERA_FOLLOW_TRANSFORM'
 H3D_VIEW_MATRIX = 'view_matrix'
 
-HANIM_DEF_PREFIX = 'hanim_'
+HANIM_DEF_PREFIX = 'hanim_'  # was hanim_
 
 def clamp_color(col):
     return tuple([max(min(c, 1.0), 0.0) for c in col])
@@ -418,11 +418,12 @@ def export(context, x3dv_export_settings):
         # since objects of different types will always have
         # different decorated names.
         uuid_cache_object = {}    # object
-        uuid_cache_light = {}      # 'LA_' + object.name
+        uuid_cache_light = {}     # 'LA_' + object.name
         uuid_cache_view = {}      # object, different namespace
         uuid_cache_mesh = {}      # mesh
-        uuid_cache_shape = {}      # mesh
+        uuid_cache_shape = {}     # mesh
         uuid_cache_material = {}  # material
+        uuid_cache_texcoords = {} # texture coordinates
         uuid_cache_image = {}     # image
         uuid_cache_world = {}     # world
         uuid_defs = {}            # defs
@@ -434,6 +435,7 @@ def export(context, x3dv_export_settings):
         WO_ = 'WO_'
         MA_ = 'MA_'
         LA_ = 'LA_'
+        TX_ = 'TX_'
         group_ = 'group_'
     else:
         # If names are not decorated, it may be possible for two objects to
@@ -446,6 +448,7 @@ def export(context, x3dv_export_settings):
         uuid_cache_mesh = uuid_cache             # mesh
         uuid_cache_shape = uuid_cache            # shape
         uuid_cache_material = uuid_cache         # material
+        uuid_cache_texcoords = {}                # texture coordinates
         uuid_cache_image = uuid_cache            # image
         uuid_cache_world = uuid_cache            # world
         uuid_defs = uuid_cache                   # defs
@@ -458,6 +461,7 @@ def export(context, x3dv_export_settings):
         WO_ = ''
         MA_ = ''
         LA_ = ''
+        TX_ = ''
         group_ = ''
 
     _TRANSFORM = '_TRANSFORM'
@@ -715,28 +719,29 @@ def export(context, x3dv_export_settings):
                       if skinCoordWeight is not None:
                          node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   else:
+                      site_shape = Shape(
+                                        #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+                                        #geometry=Box(size = (0.05, 0.05, 0.05))
+                              )
+                      setUSEDEF("", "SiteShape", site_shape)
                       site = HAnimSite(# translation=loc[:],
                                 children=[
                                 Transform(
                                     translation=center[:],
                                     children=[
-                                    Shape(
-                                        USE="SiteShape"
-                                        #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                                        #geometry=Box(size = (0.05, 0.05, 0.05))
-                                    )
+                                        site_shape
                                 ])
                             ])
                       setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_tip", site)
                       objname=substitute(obj.name)
                       segmentname=substitute(segment_name)
+                      joint_shape = Shape()
+                      setUSEDEF("", "JointShape", joint_shape)
                       segment = HAnimSegment(children=[
                           TouchSensor(description=f"joint {objname} segment {segmentname}"),
                           Transform(translation=center[:],
                               children=[
-                                  Shape(
-                                      USE="JointShape"
-                                  )
+                                  joint_shape
                               ]),
                             #Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
                             #      geometry=LineSet(
@@ -1036,13 +1041,14 @@ def export(context, x3dv_export_settings):
             return node
         else:
             site_name = joint.name
-            site = HAnimSite(children=[
-                Transform( children=[
-                    Shape(
-                        USE="SiteShape"
+            site_shape = Shape(
                         #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
                         #geometry=Box(size = (0.05, 0.05, 0.05))
                     )
+            setUSEDEF("", "SiteShape", site_shape)
+            site = HAnimSite(children=[
+                Transform( children=[
+                    site_shape
                 ])
             ])
             setUSEDEF(HANIM_DEF_PREFIX, site_name, site)
@@ -1228,7 +1234,6 @@ def export(context, x3dv_export_settings):
         mesh_id = unique_name(mesh, ME_ + mesh_name, uuid_cache_mesh, clean_func=clean_def, sep="_")
         mesh_id_group = prefix_str(mesh_id, group_)
         mesh_id_coords = prefix_str(mesh_id, 'coords_')
-        print_console('INFO', f"Adding coords {mesh_id_coords}")
         mesh_id_normals = prefix_str(mesh_id, 'normals_')
 
         # Be sure tessellated loop triangles are available!
@@ -1252,7 +1257,8 @@ def export(context, x3dv_export_settings):
         trans = b2xTransform(matrix, suffix_str(obj_id, "_ifs" + _TRANSFORM))
         grp = None
         if mesh.tag:
-            grp = Group(USE=mesh_id_group)
+            grp = Group()
+            setUSEDEF("", mesh_id_group, grp)
             if bottom != None:
                 bottom.children.append(grp)
             else:
@@ -1261,7 +1267,7 @@ def export(context, x3dv_export_settings):
             
         else:
             mesh.tag = True
-            grp = Group(DEF=mesh_id_group)
+            grp = Group()
             if bottom != None:
                 bottom.children.append(grp)
             else:
@@ -1354,8 +1360,8 @@ def export(context, x3dv_export_settings):
             for (material_index, image), polygons_group in polygons_groups.items():
                 if polygons_group:
                     material = mesh_materials[material_index]
-                    shape_id = substitute(SH_ + mesh_name) + counter.get_id()
-                    shape = Shape(DEF=shape_id)
+                    shape_id = substitute(SH_ + mesh_name) # + counter.get_id()
+                    shape = Shape()
                     bottom.children.append(shape)
 
                     is_smooth = False
@@ -1392,15 +1398,18 @@ def export(context, x3dv_export_settings):
                     appr = Appearance()
                     shape.appearance = appr
                     if image is None:
-                        image_id = IM_ + obj.name
+                        image_id = substitute(IM_ + mesh_name)
                         #print(f"Image id {image_id}")
                         if image_textures[obj]['used']:
-                            imt = ImageTexture(USE=image_id)
+                            imt = ImageTexture()
+                            setUSEDEF("", image_id, imt)
                         else:
                             image_textures[obj]['used'] = True
                             url = image_textures[obj]['url']
-                            imt = ImageTexture(DEF=image_id, url=url)
-                            print_console('INFO', f"url {url}")
+                            imt = ImageTexture()
+                            imt.url = url
+                            setUSEDEF("", image_id, imt)
+                            # print_console('INFO', f"url {url}")
                         appr.texture = imt
                     elif image and not use_h3d:
                         [ imt, image_id ] = b2xImageTexture( image)
@@ -1408,7 +1417,7 @@ def export(context, x3dv_export_settings):
                         print_console('INFO', f"Appearance {appr} texture {appr.texture} url {appr.texture.url}")
                         # transform by mtex
                         # TODO
-                        if 0:
+                        if False:
                             loc = mesh_material_mtex[material_index].offset[:2]
 
                             # mtex_scale * tex_repeat
@@ -1526,7 +1535,8 @@ def export(context, x3dv_export_settings):
                             #fw('%i %i %i ' % (x3d_f[0][2], x3d_f[1][2], x3d_f[2][2]))
                             its.index.append((x3d_f[0][2], x3d_f[1][2], x3d_f[2][2]))
 
-                        coord = b2xCoordinate(DEF=mesh_id_coords)
+                        coord = b2xCoordinate()
+                        setUSEDEF("", mesh_id_coords, coord)
                         its.coord = coord
                         its.coord.point = []
 
@@ -1548,6 +1558,7 @@ def export(context, x3dv_export_settings):
 
                         if is_uv:
                             texcoord = TextureCoordinate()
+                            setUSEDEF("", TX_ + mesh_name, texcoord)
                             its.texCoord = texcoord
                             #fw('%s<TextureCoordinate point="' % ident)
                             for x3d_v in vert_tri_list:
@@ -1593,7 +1604,7 @@ def export(context, x3dv_export_settings):
                     else:
                         ifs = IndexedFaceSet(
                             creaseAngle=3.142,
-                            ccw=True,
+                            ccw=False,
                             convex=True,
                             solid=True)
 
@@ -1641,12 +1652,13 @@ def export(context, x3dv_export_settings):
 
                         # --- Write IndexedFaceSet Elements
                         if True:
+                            ifs.coord = b2xCoordinate()
+                            setUSEDEF("", mesh_id_coords, ifs.coord)
                             if is_coords_written:
-                                ifs.coord = b2xCoordinate(USE=mesh_id_coords)
                                 if export_settings['x3dv_normals']:
-                                    ifs.normal = Normal(USE=mesh_id_normals)
+                                    ifs.normal = Normal()
+                                    setUSEDEF("", mesh_id_normals, ifs.normal)
                             else:
-                                ifs.coord = b2xCoordinate(DEF=mesh_id_coords)
                                 ifs.coord.point = []
                                 for v in mesh.vertices:
                                     vco = [ None, None, None ]
@@ -1657,7 +1669,8 @@ def export(context, x3dv_export_settings):
                                     ifs.coord.point.append(loc[:])
 
                                 if export_settings['x3dv_normals']:
-                                    ifs.normal = Normal(DEF=mesh_id_normals)
+                                    ifs.normal = Normal()
+                                    setUSEDEF("", mesh_id_normals, ifs.normal)
                                     ifs.normal.vector = []
                                     for v in mesh.vertices:
                                         ifs.normal.vector.append(round_array_no_unit_scale(v.normal[:]))
@@ -1669,6 +1682,7 @@ def export(context, x3dv_export_settings):
                             lidx = 9048
                             try:
                                 texcoord = TextureCoordinate()
+                                setUSEDEF("", TX_ + mesh_name, texcoord)
                                 ifs.texCoord = texcoord
                                 for i in polygons_group:
                                     #print(f"OK 1 ! at mesh polygons group {i}")
@@ -1718,8 +1732,10 @@ def export(context, x3dv_export_settings):
                                     ifs.color.color.append(mesh_loops_col[mesh_polygons[i].loop_start].color[:])
 
                         #/IndexedFaceSet
+                        setUSEDEF("", mesh_id, ifs);
 
                     #/Shape
+                    setUSEDEF("", shape_id, shape)
 
                     # XXX
 
@@ -1728,6 +1744,7 @@ def export(context, x3dv_export_settings):
             #fw('%s</PythonScript>\n' % ident)
 
             # /Group>
+            setUSEDEF("", mesh_id_group, grp)
 
         return top
 
@@ -1735,11 +1752,12 @@ def export(context, x3dv_export_settings):
         material_id = unique_name(material, MA_ + material.name, uuid_cache_material, clean_func=clean_def, sep="_")
 
         # look up material name, use it if available
+        mat = Material()
+        setUSEDEF("", material_id, mat)
         if material.tag:
-            mat = Material(USE=material_id)
+            pass
         else:
             material.tag = True
-            mat = Material(DEF=material_id)
 
             emit = 0.0 #material.emit
             ambient = 0.0 #material.ambient / 3.0
@@ -2047,24 +2065,23 @@ def export(context, x3dv_export_settings):
             bpy.ops.object.mode_set(mode="EDIT")
         except:
             pass
-        image_id = unique_name(image, IM_ + image.name, uuid_cache_image, clean_func=clean_def, sep="_")
+        image_id = substitute(unique_name(image, IM_ + image.name, uuid_cache_image, clean_func=clean_def, sep="_"))
 
-        if image.tag:
-            imt = ImageTexture(USE=image_id)
-            pass
-        else:
+        imt = ImageTexture()
+        setUSEDEF("", image_id, imt)
+        if not image.tag:
             image.tag = True
-            imt = ImageTexture(DEF=image_id)
             if not image.filepath:
                 uv_dir = os.path.join(base_dst, 'uv')
                 if not os.path.isdir(uv_dir):
                     os.mkdir(uv_dir)
                 else:
-                    print_console('INFO', f"{uv_dir} folder exists")
+                    #print_console('INFO', f"{uv_dir} folder exists")
+                    pass
                 png_name = image.name+".png"
                 png_url = 'uv/' + png_name  # note forward slash of URL
                 png_path = os.path.join(uv_dir, png_name)
-                print_console('INFO', f"UV path is {png_path}")
+                #print_console('INFO', f"UV path is {png_path}")
                 image.filepath = png_path
 
             # collect image paths, can load multiple
@@ -2257,11 +2274,12 @@ def export(context, x3dv_export_settings):
                     if not os.path.isdir(uv_dir):
                         os.mkdir(uv_dir)
                     else:
-                        print_console('INFO', f"{uv_dir} folder exists")
+                        #print_console('INFO', f"{uv_dir} folder exists")
+                        pass
                     png_name = obj.name+".png"
                     png_url = 'uv/' + png_name  # note forward slash of URL
                     png_path = os.path.join(uv_dir, png_name)
-                    print_console('INFO', f"UV path is {png_path}")
+                    # print_console('INFO', f"UV path is {png_path} did not call bpy.ops.uv.export_layout()")
                     # bpy.ops.uv.export_layout(filepath=png_path, mode='PNG', size=(4096, 4096), opacity=1)
                     if obj in image_textures:
                         image_textures[obj]['url'].append(png_url)
@@ -2318,6 +2336,8 @@ def export(context, x3dv_export_settings):
                 data = obj.data
                 node = b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
                 prior_after = after
+                DEFnodes = []
+                point = None
                 for obj_child, obj_child_children in obj_children:
                     [ x3dnodelist, after ] = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures)
                     print_console('INFO', f"returned x3dnodelist {x3dnodelist} and {after}")
@@ -2341,7 +2361,7 @@ def export(context, x3dv_export_settings):
                     DEFnodes[0].point = None  # erase point from this.  VRML output is wrong from x3dv.py
                 else:
                     DEFname = "JointsSkinCoordPoint"
-                node.skinCoord = b2xCoordinate(DEF=DEFname, point=point)
+                node.skinCoord = b2xCoordinate(DEF=DEFname, point=point)  # TODO skinCoord comes before skin for now
                 after = prior_after
                 if node != None:
                     bottom.children.append(node)
@@ -2377,7 +2397,7 @@ def export(context, x3dv_export_settings):
         if is_dummy_tx:
             is_dummy_tx = False
 
-        print_console('INFO', f"returning {len(after)} sub-nodes for animations.")
+        #print_console('INFO', f"returning {len(after)} sub-nodes for animations.")
         return [ top.children, after ]
 
     # -------------------------------------------------------------------------
@@ -2424,17 +2444,18 @@ def export(context, x3dv_export_settings):
         x3dmodel.Scene.children.append(
             PointLight(location=(0, 0, 10))
         )
-        x3dmodel.Scene.children.append(
-            Transform( children=[
-                Shape(
-                    DEF="SiteShape",
+        site_shape = Shape(
                     geometry=Box(size = (0.05, 0.05, 0.05)),
                     appearance=Appearance(
                         material=Material(
-                            diffuseColor = (0, 0, 1),
+                            diffuseColor = (0, 0, 1, 0),
                             transparency = 1
                         ))
                 )
+        setUSEDEF("", "SiteShape", site_shape)
+        x3dmodel.Scene.children.append(
+            Transform( children=[
+                site_shape
             ])
         )
         #x3dmodel.Scene.children.append(
@@ -2450,18 +2471,20 @@ def export(context, x3dv_export_settings):
         #        ))
         #    ])
         #)
-        x3dmodel.Scene.children.append(
-            Transform( children=[
-                Shape(
-                    DEF="JointShape",
+
+        joint_shape = Shape(
                     geometry=Sphere(radius=0.06),
                     appearance=Appearance(
                         DEF="JointAppearance",
                         material=Material(
-                            diffuseColor = (1, 0.5, 0),
+                            diffuseColor = (1, 0.5, 0, 0),
                             transparency = 1
                         ))
                 )
+        setUSEDEF("", "JointShape", joint_shape)
+        x3dmodel.Scene.children.append(
+            Transform( children=[
+                joint_shape
             ])
         )
 
