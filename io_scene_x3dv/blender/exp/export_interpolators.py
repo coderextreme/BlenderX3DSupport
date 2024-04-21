@@ -354,3 +354,139 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     nodes.append(orientationInterpolators[:])
     nodes.append(orientationRoutes[:])
     return nodes
+
+def write_obj_interpolators(obj, matrix, prefix):
+
+    def setUSEDEF(prefix, name, node):
+        if name is None:
+            name = ""
+        else:
+            node.name = name
+        node.DEF = substitute(prefix+name)
+
+    name = obj.name
+    nodes = []
+    scene = bpy.context.scene
+    frame_start = scene.frame_start
+    frame_end = scene.frame_end
+    frame_current = scene.frame_current
+    frame_count = frame_end - frame_start + 1
+    frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
+
+    key_divider = (frame_count - 1) * frame_count / scene.render.fps 
+
+    print_console('INFO', "Frame count: %d\n" % frame_count)
+    print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
+    print_console('INFO', "Key divider: %.6f\n" % key_divider)
+    frame_range = [frame_current, frame_end]
+    time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
+    clock_name = substitute(name+"_Clock")
+    setUSEDEF(clock_name, None, time_sensor)
+    activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
+    activate_name = substitute(name+"_Close")
+    setUSEDEF(activate_name, None, activate_sensor)
+    activate_route = ROUTE(
+            fromNode=activate_name,
+            fromField="enterTime",
+            toNode=clock_name,
+            toField="startTime")
+
+    positionInterpolators = []
+    orientationInterpolators = []
+    positionRoutes = []
+    orientationRoutes = []
+    # print(f"Creating interpolators for {obj.name}")
+    pobjname = substitute(prefix+obj.name)
+    piobjname = substitute(name+"_PI_"+obj.name)
+    posInterp = PositionInterpolator()
+    setUSEDEF(name+"_PI_", obj.name, posInterp)
+    positionInterpolators.append(posInterp)
+    positionRoutes.append(ROUTE(
+        fromNode=clock_name,
+        fromField="fraction_changed",
+        toNode=piobjname,
+        toField="set_fraction"))
+    positionRoutes.append(ROUTE(
+        fromNode=piobjname,
+        fromField="value_changed",
+        toNode=pobjname,
+        toField="translation"))
+
+    rotInterp = OrientationInterpolator()
+    setUSEDEF(name+"_OI_", obj.name, rotInterp)
+    orientationInterpolators.append(rotInterp)
+    oiobjname = substitute(name+"_OI_"+obj.name)
+    orientationRoutes.append(ROUTE(
+        fromNode=clock_name,
+        fromField="fraction_changed",
+        toNode=oiobjname,
+        toField="set_fraction"))
+    orientationRoutes.append(ROUTE(
+        fromNode=oiobjname,
+        fromField="value_changed",
+        toNode=pobjname,
+        toField="rotation"))
+    lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
+    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
+    keyframe_time = 0
+
+    skip = False
+    for frame in range(frame_start, frame_end + 1):
+        scene.frame_set(frame)
+
+        loc, rot, scale = matrix.decompose()
+        rot = rot.to_axis_angle()
+        rot = (*rot[0].normalized(), rot[1])
+
+        positionInterpolators[0].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
+        positionInterpolators[0].keyValue.append(round_array(loc)[:]) # location
+
+        rt = [None, None, None, None]
+        rt[0] = rot[0]
+        rt[1] = rot[1]
+        rt[2] = rot[2]
+        rt[3] = rot[3]
+        axa = round_array_no_unit_scale(rt)[:]
+        oldlen = len(orientationInterpolators[0].keyValue)
+        if oldlen > 0:
+            oldaxa = orientationInterpolators[0].keyValue[oldlen-1]
+        else:
+            oldaxa = None
+        if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
+            orientationInterpolators[0].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
+            orientationInterpolators[0].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
+        keyframe_time = keyframe_time + keyframe_length
+
+    animation_data = obj.animation_data
+    if animation_data:
+        action = animation_data.action
+        fcurves = action.fcurves
+
+        coordinateInterpolator = CoordinateInterpolator(DEF=obj.name+"_CI")
+        for fc in fcurves:
+            if fc.data_path == 'location':
+                for keyframe in fc.keyframe_points:
+                    coordinateInterpolator.key.append(keyframe.co[0])
+                    for coi in keyframe.co:  # not just 3 numbers in a coordinate
+                        coordinateInterpolator.keyValue.append(keyframe.co[coi])
+        coordinateRoute = ROUTE(
+            fromNode=clock_name,
+            fromField="fraction_changed",
+            toNode=obj.name+"_CI",
+            toField="set_fraction")
+        print_console('INFO', "Writing 1 coordinate interpolator, 1 route.")
+        nodes.append(coordinateInterpolator)
+        nodes.append(coordinateRoute)
+
+
+    scene.frame_set(frame_current)
+    nodes.append(positionInterpolators[:])
+    nodes.append(positionRoutes[:])
+    print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
+    nodes.append(time_sensor)
+    nodes.append(activate_sensor)
+    nodes.append(activate_route)
+    nodes.append(orientationInterpolators[:])
+    nodes.append(orientationRoutes[:])
+    return nodes
+

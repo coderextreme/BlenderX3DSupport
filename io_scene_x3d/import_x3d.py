@@ -31,7 +31,7 @@ texture_cache = {}
 material_cache = {}
 
 EPSILON = 0.0000001  # Very crude.
-
+PREF_TIME_MULT = 100
 
 def imageConvertCompat(path):
 
@@ -3243,7 +3243,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
 
     # Create bones for each joint
     for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
-        print(f"Joint {joint_name} {joint_start} {joint_end}")
+        # print(f"Joint {joint_name} {joint_start} {joint_end}")
         if not joint_name:
             joint_name = vrmlname
         # bpy.ops.armature.bone_primitive_add(name=joint_name)
@@ -3261,7 +3261,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
     for segment in segments:
         bpy.ops.object.mode_set(mode='EDIT')
         parent_joint, child_joint = segment
-        print(f"Segment {parent_joint} {child_joint}")
+        # print(f"Segment {parent_joint} {child_joint}")
         if parent_joint in skeleton.data.edit_bones:
             parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
         else:
@@ -3282,6 +3282,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
                     if child_group is None:
                         child_group = obj.vertex_groups.new(name=child_joint)
                     for wi in range(len(jointSkin[child_joint]['skinCoordIndex'])):
+                        print(f"Index {jointSkin[child_joint]['skinCoordIndex'][wi]} weight {jointSkin[child_joint]['skinCoordWeight'][wi]}")
                         child_group.add([jointSkin[child_joint]['skinCoordIndex'][wi]], jointSkin[child_joint]['skinCoordWeight'][wi], 'REPLACE')
 
 
@@ -3294,15 +3295,10 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
 def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, parent_center=[0, 0, 0]):
     for child in children:
         child_bone_name = child.getDefName()
-        if child_bone_name:
-            print(f"Founds DEF for child, {child_bone_name}")
-        else:
+        if not child_bone_name:
             child_bone_name = child.getFieldAsString('name', '', ancestry)
-            if child_bone_name:
-                print(f"Founds name for child, {child_bone_name}")
-            else:
-                child_bone_name = parent_bone_name
-                print(f"Founds armature for child, {child_bone_name}")
+        if not child_bone_name:
+            child_bone_name = parent_bone_name
         segments.append((parent_bone_name, child_bone_name))
         importHAnimJoint(joints, segments, child, ancestry, parent_bone_name, parent_center)
 
@@ -3311,13 +3307,8 @@ def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, p
         child_bone_name = child.getDefName()
         if not child_bone_name:
             child_bone_name = child.getFieldAsString('name', '', ancestry)
-            if not child_bone_name:
-                child_bone_name = 'Armature'
-                print(f"Found armature for child, {child_bone_name}")
-            else:
-                print(f"Found name for child, {child_bone_name}")
-        else:
-            print(f"Found DEF for child, {child_bone_name}")
+        if not child_bone_name:
+            child_bone_name = 'Armature'
         child_center = child.getFieldAsFloatTuple('center', None, ancestry)
         skinCoordWeight = child.getFieldAsArray('skinCoordWeight', 0, ancestry)
         skinCoordIndex = child.getFieldAsArray('skinCoordIndex', 0, ancestry)
@@ -3328,7 +3319,6 @@ def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, p
 
         if not child_center:
             child_center = [0, 0, 0]
-        print(f"Found center, {child_center}, scw {skinCoordWeight} sci {skinCoordIndex}")
         joints.append((child_bone_name, (child_center[0], child_center[1], child_center[2]), (parent_center[0], parent_center[1], parent_center[2]), skinCoordWeight, skinCoordIndex))
 
         children = child.getChildrenBySpec('HAnimJoint')
@@ -3511,9 +3501,9 @@ def translatePositionInterpolator(node, action, ancestry):
         except:
             continue
 
-        loc_x.keyframe_points.insert(time, x)
-        loc_y.keyframe_points.insert(time, y)
-        loc_z.keyframe_points.insert(time, z)
+        loc_x.keyframe_points.insert(time*PREF_TIME_MULT, x)
+        loc_y.keyframe_points.insert(time*PREF_TIME_MULT, y)
+        loc_z.keyframe_points.insert(time*PREF_TIME_MULT, z)
 
     for fcu in (loc_x, loc_y, loc_z):
         for kf in fcu.keyframe_points:
@@ -3533,7 +3523,7 @@ def translateCoordinateInterpolator(node, action, ancestry):
 
 
     for time, coord in zip(key, KeyValues):
-        node.blendObject.keyframe_insert(data_path="location", frame=time * 24, value=coord)
+        node.blendObject.keyframe_insert(data_path="location", frame=time*PREF_TIME_MULT, value=coord)
 
     bpy.ops.object.paths_calculate_motion_paths()
 
@@ -3553,9 +3543,9 @@ def translateOrientationInterpolator(node, action, ancestry):
 
         mtx = translateRotation((x, y, z, w))
         eul = mtx.to_euler()
-        rot_x.keyframe_points.insert(time, eul.x)
-        rot_y.keyframe_points.insert(time, eul.y)
-        rot_z.keyframe_points.insert(time, eul.z)
+        rot_x.keyframe_points.insert(time*PREF_TIME_MULT, eul.x)
+        rot_y.keyframe_points.insert(time*PREF_TIME_MULT, eul.y)
+        rot_z.keyframe_points.insert(time*PREF_TIME_MULT, eul.z)
 
     for fcu in (rot_x, rot_y, rot_z):
         for kf in fcu.keyframe_points:
@@ -3577,9 +3567,9 @@ def translateScalarInterpolator(node, action, ancestry):
         except:
             continue
 
-        sca_x.keyframe_points.new(time, x)
-        sca_y.keyframe_points.new(time, y)
-        sca_z.keyframe_points.new(time, z)
+        sca_x.keyframe_points.new(time*PREF_TIME_MULT, x)
+        sca_y.keyframe_points.new(time*PREF_TIME_MULT, y)
+        sca_z.keyframe_points.new(time*PREF_TIME_MULT, z)
 
 
 def translateTimeSensor(node, action, ancestry):
@@ -3618,6 +3608,7 @@ def importRoute(node, ancestry):
     """
 
     if not hasattr(node, 'fields'):
+        print(f"return not hasattr fields")
         return
 
     routeIpoDict = node.getRouteIpoDict()
@@ -3627,6 +3618,7 @@ def importRoute(node, ancestry):
             action = routeIpoDict[act_id]
         except:
             action = routeIpoDict[act_id] = bpy.data.actions.new('web3d_ipo')
+        print(f"return action {act_id} {action}")
         return action
 
     # for getting definitions
@@ -3650,10 +3642,12 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
     time_node = None
 
     for field in node.fields:
+        # print(f"return field {field}")
         if field and field[0] == 'ROUTE':
             try:
                 from_id, from_type = field[1].split('.')
                 to_id, to_type = field[3].split('.')
+                print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
             except:
                 print("Warning, invalid ROUTE", field)
                 continue
@@ -3690,6 +3684,7 @@ def load_web3d(
         filepath,
         *,
         PREF_FLAT=False,
+        PREF_TIME_MULT=10,
         PREF_CIRCLE_DIV=16,
         global_matrix=None,
         HELPER_FUNC=None
@@ -3824,7 +3819,7 @@ def load_with_profiler(
     import cProfile
     import pstats
     pro = cProfile.Profile()
-    pro.runctx("load_web3d(context, filepath, PREF_FLAT=True, "
+    pro.runctx("load_web3d(context, filepath, PREF_FLAT=True, PREF_TIME_MULT=10,"
                "PREF_CIRCLE_DIV=16, global_matrix=global_matrix)",
                globals(), locals())
     st = pstats.Stats(pro)
@@ -3842,6 +3837,7 @@ def load(context,
     # loadWithProfiler(operator, context, filepath, global_matrix)
     load_web3d(context, filepath,
                PREF_FLAT=True,
+               PREF_TIME_MULT=10,
                PREF_CIRCLE_DIV=16,
                global_matrix=global_matrix,
                )
