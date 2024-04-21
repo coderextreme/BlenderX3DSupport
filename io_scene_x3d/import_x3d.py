@@ -36,21 +36,23 @@ EPSILON = 0.0000001  # Very crude.
 def imageConvertCompat(path):
 
     if os.sep == '\\':
+        print(f"Returning Win32 {path}")
         return path  # assume win32 has quicktime, dont convert
 
     if path.lower().endswith('.gif'):
         path_to = path[:-3] + 'png'
 
-        '''
         if exists(path_to):
+            print(f"Returning existing {path_to}")
             return path_to
-        '''
-        # print('\n'+path+'\n'+path_to+'\n')
+        print(f"convert {path} to {path_to}")
         os.system('convert "%s" "%s"' % (path, path_to))  # for now just hope we have image magick
 
         if os.path.exists(path_to):
+            print(f"Returning new {path_to}")
             return path_to
 
+    print(f"Returning not gif {path}")
     return path
 
 # notes
@@ -2790,12 +2792,20 @@ def appearance_LoadImageTextureFile(ima_urls, node):
     bpyima = None
     for f in ima_urls:
         dirname = os.path.dirname(node.getFilename())
+        #if not dirname:
+        #    dirname = "."
+        if f.startswith('"'):
+            f = f[1:-1] # strip quotes
+        print(f"Attempting to load image {dirname}{f}")
         bpyima = image_utils.load_image(f, dirname,
                                         place_holder=False,
                                         recursive=False,
                                         convert_callback=imageConvertCompat)
         if bpyima:
+            print(f"Succeeded to load image {dirname}{f}")
             break
+        else:
+            print(f"Failed to load image {dirname}{f}")
 
     return bpyima
 
@@ -3198,6 +3208,14 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
     if not vrmlname:
         vrmlname = 'HAnimHumanoid'
 
+    skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
+    if skinCoord:
+        points = skinCoord.getFieldAsArray('point', 0, ancestry)
+        bpymesh = bpy.data.meshes.new(name="skinCoord")
+        bpymesh.vertices.add(len(points) // 3)
+        bpymesh.vertices.foreach_set('co', points)
+        print(bpymesh)
+
     # Create armature and object
     armature_data = bpy.data.armatures.new(vrmlname)
     skeleton = bpy.data.objects.new(vrmlname, armature_data)
@@ -3214,18 +3232,20 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
     bpyob = node.blendData = node.blendObject = skeleton
 
 
-    # Process child joints
-    child = node.getChildBySpec('HAnimJoint')
+    # Process children joints, including USE, if present
+    child = node.getChildBySpec('HAnimJoint') # 'HAnimJoint'
     joints = []
     segments = []
     # joints.append((vrmlname, (0,0,0), (0,0,0), (), ()))
-    importHAnimJoint(joints, segments, child, ancestry, vrmlname)
+    importHAnimJoint(joints, segments, child, ancestry, vrmlname, parent_center=[0, 0, 0])
 
     jointSkin = {}
 
     # Create bones for each joint
     for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
-        print(f"Joint  {joint_name} {joint_start} {joint_end}")
+        print(f"Joint {joint_name} {joint_start} {joint_end}")
+        if not joint_name:
+            joint_name = vrmlname
         # bpy.ops.armature.bone_primitive_add(name=joint_name)
         new_segment = armature_data.edit_bones.new(joint_name)
         # new_segment = skeleton.data.edit_bones[joint_name]
@@ -3274,25 +3294,50 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
 def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, parent_center=[0, 0, 0]):
     for child in children:
         child_bone_name = child.getDefName()
+        if child_bone_name:
+            print(f"Founds DEF for child, {child_bone_name}")
+        else:
+            child_bone_name = child.getFieldAsString('name', '', ancestry)
+            if child_bone_name:
+                print(f"Founds name for child, {child_bone_name}")
+            else:
+                child_bone_name = parent_bone_name
+                print(f"Founds armature for child, {child_bone_name}")
         segments.append((parent_bone_name, child_bone_name))
         importHAnimJoint(joints, segments, child, ancestry, parent_bone_name, parent_center)
 
 def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, parent_center=[0, 0, 0]):
-    child_bone_name = child.getDefName()
-    child_center = child.getFieldAsFloatTuple('center', None, ancestry)
-    skinCoordWeight = child.getFieldAsArray('skinCoordWeight', 0, ancestry)
-    skinCoordIndex = child.getFieldAsArray('skinCoordIndex', 0, ancestry)
-    if skinCoordWeight is None:
-        skinCoordWeight = ()
-    if skinCoordIndex is None:
-        skinCoordIndex = ()
+    if child:
+        child_bone_name = child.getDefName()
+        if not child_bone_name:
+            child_bone_name = child.getFieldAsString('name', '', ancestry)
+            if not child_bone_name:
+                child_bone_name = 'Armature'
+                print(f"Found armature for child, {child_bone_name}")
+            else:
+                print(f"Found name for child, {child_bone_name}")
+        else:
+            print(f"Found DEF for child, {child_bone_name}")
+        child_center = child.getFieldAsFloatTuple('center', None, ancestry)
+        skinCoordWeight = child.getFieldAsArray('skinCoordWeight', 0, ancestry)
+        skinCoordIndex = child.getFieldAsArray('skinCoordIndex', 0, ancestry)
+        if skinCoordWeight is None:
+            skinCoordWeight = ()
+        if skinCoordIndex is None:
+            skinCoordIndex = ()
 
-    if child_center:
+        if not child_center:
+            child_center = [0, 0, 0]
+        print(f"Found center, {child_center}, scw {skinCoordWeight} sci {skinCoordIndex}")
         joints.append((child_bone_name, (child_center[0], child_center[1], child_center[2]), (parent_center[0], parent_center[1], parent_center[2]), skinCoordWeight, skinCoordIndex))
 
-    children = child.getChildrenBySpec('HAnimJoint')
-    if children:
-        importHAnimJoints(joints, segments, children, ancestry, child_bone_name, child_center)
+        children = child.getChildrenBySpec('HAnimJoint')
+        if children:
+            importHAnimJoints(joints, segments, children, ancestry, child_bone_name, child_center)
+        else:
+            print(f"Didn't find children, {children}")
+    else:
+        print(f"Didn't find child, {child}")
 
 
 
@@ -3475,6 +3520,23 @@ def translatePositionInterpolator(node, action, ancestry):
             kf.interpolation = 'LINEAR'
 
 
+def translateCoordinateInterpolator(node, action, ancestry):
+    key = node.getFieldAsArray('key', 0, ancestry)
+    keyValue = node.getFieldAsArray('keyValue', 0, ancestry)
+    offset = len(keyValue) / len(key)
+    keyValues = []
+    for i, k in enumerate(key):
+        keyV = []
+        for of in range(offset):
+            keyV[of] = keyValue[of*offset+of]
+        keyValues.append(keyV)
+
+
+    for time, coord in zip(key, KeyValues):
+        node.blendObject.keyframe_insert(data_path="location", frame=time * 24, value=coord)
+
+    bpy.ops.object.paths_calculate_motion_paths()
+
 def translateOrientationInterpolator(node, action, ancestry):
     key = node.getFieldAsArray('key', 0, ancestry)
     keyValue = node.getFieldAsArray('keyValue', 4, ancestry)
@@ -3612,6 +3674,11 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
                     set_data_from_node = defDict[from_id]
                     translateScalarInterpolator(set_data_from_node, action, ancestry)
 
+                if to_type == 'set_point':
+                    action = getIpo(to_id)
+                    set_data_from_node = defDict[from_id]
+                    translateCoordinateInterpolator(set_data_from_node, action, ancestry)
+
             elif from_type == 'bindTime':
                 action = getIpo(from_id)
                 time_node = defDict[to_id]
@@ -3706,7 +3773,7 @@ def load_web3d(
                 if node.blendData is None:  # Add an object if we need one for animation
                     node.blendData = node.blendObject = bpy.data.objects.new('AnimOb', None)  # , name)
                     bpycollection.objects.link(node.blendObject)
-                    bpyob.select_set(True)
+                    node.blendObject.select_set(True)
 
                 if node.blendData.animation_data is None:
                     node.blendData.animation_data_create()
