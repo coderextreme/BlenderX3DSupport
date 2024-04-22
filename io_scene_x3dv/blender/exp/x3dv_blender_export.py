@@ -479,7 +479,10 @@ def export(context, x3dv_export_settings):
             name = ""
         else:
             node.name = substitute(name)
-        pname = substitute(prefix+name)
+        if name.startswith(prefix):
+            pname = substitute(name)
+        else:
+            pname = substitute(prefix+name)
         if name_used(pname):
             node.USE = pname
         else:
