@@ -61,7 +61,7 @@ class ImportX3D(bpy.types.Operator, ImportHelper):
     bl_options = {'PRESET', 'UNDO'}
 
     filename_ext = ".x3d"
-    filter_glob: StringProperty(default="*.x3d;*.wrl", options={'HIDDEN'})
+    filter_glob: StringProperty(default="*.x3d;*.wrl;*.x3dv", options={'HIDDEN'})
 
     def execute(self, context):
         from . import import_x3d
@@ -270,7 +270,7 @@ class X3D_PT_import_transform(bpy.types.Panel):
 
 def menu_func_import(self, context):
     self.layout.operator(ImportX3D.bl_idname,
-                         text="X3D Extensible 3D (.x3d/.wrl)")
+                         text="X3D Extensible 3D (.x3d/.wrl/.x3dv)")
 
 
 def menu_func_export(self, context):

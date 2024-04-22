@@ -3214,7 +3214,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
         bpymesh = bpy.data.meshes.new(name="skinCoord")
         bpymesh.vertices.add(len(points) // 3)
         bpymesh.vertices.foreach_set('co', points)
-        print(bpymesh)
+        print(f"Mesh is {bpymesh}")
 
     # Create armature and object
     armature_data = bpy.data.armatures.new(vrmlname)
@@ -3243,7 +3243,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
 
     # Create bones for each joint
     for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
-        # print(f"Joint {joint_name} {joint_start} {joint_end}")
+        print(f"Joint {joint_name} {joint_start} {joint_end}")
         if not joint_name:
             joint_name = vrmlname
         # bpy.ops.armature.bone_primitive_add(name=joint_name)
@@ -3261,7 +3261,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
     for segment in segments:
         bpy.ops.object.mode_set(mode='EDIT')
         parent_joint, child_joint = segment
-        # print(f"Segment {parent_joint} {child_joint}")
+        print(f"Segment {parent_joint} {child_joint}")
         if parent_joint in skeleton.data.edit_bones:
             parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
         else:
@@ -3296,17 +3296,18 @@ def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, pa
     for child in children:
         child_bone_name = child.getDefName()
         if not child_bone_name:
-            child_bone_name = child.getFieldAsString('name', '', ancestry)
+            child_bone_name = child.getFieldAsString('name', None, ancestry)
         if not child_bone_name:
             child_bone_name = parent_bone_name
         segments.append((parent_bone_name, child_bone_name))
+        print(f"Segment IHAJs {parent_bone_name} {child_bone_name}")
         importHAnimJoint(joints, segments, child, ancestry, parent_bone_name, parent_center)
 
 def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, parent_center=[0, 0, 0]):
     if child:
         child_bone_name = child.getDefName()
         if not child_bone_name:
-            child_bone_name = child.getFieldAsString('name', '', ancestry)
+            child_bone_name = child.getFieldAsString('name', None, ancestry)
         if not child_bone_name:
             child_bone_name = 'Armature'
         child_center = child.getFieldAsFloatTuple('center', None, ancestry)
@@ -3321,6 +3322,7 @@ def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, p
             child_center = [0, 0, 0]
         joints.append((child_bone_name, (child_center[0], child_center[1], child_center[2]), (parent_center[0], parent_center[1], parent_center[2]), skinCoordWeight, skinCoordIndex))
 
+        print(f"Joint IHAJ {joints[-1]}")
         children = child.getChildrenBySpec('HAnimJoint')
         if children:
             importHAnimJoints(joints, segments, children, ancestry, child_bone_name, child_center)
@@ -3602,14 +3604,7 @@ def translateTimeSensor(node, action, ancestry):
         time_cu.extend = Blender.IpoCurve.ExtendTypes.CYCLIC  # or - EXTRAP, CYCLIC_EXTRAP, CONST,
 
 
-def importRoute(node, ancestry):
-    """
-    Animation route only at the moment
-    """
-
-    if not hasattr(node, 'fields'):
-        print(f"return not hasattr fields")
-        return
+def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
 
     routeIpoDict = node.getRouteIpoDict()
 
@@ -3617,12 +3612,50 @@ def importRoute(node, ancestry):
         try:
             action = routeIpoDict[act_id]
         except:
-            action = routeIpoDict[act_id] = bpy.data.actions.new('web3d_ipo')
+            action = routeIpoDict[act_id] = bpy.data.actions.new(act_id)
         print(f"return action {act_id} {action}")
         return action
 
     # for getting definitions
     defDict = node.getDefDict()
+
+    if from_type == 'value_changed':
+        if to_type == 'set_position':
+            action = getIpo(to_id)
+            set_data_from_node = defDict[from_id]
+            translatePositionInterpolator(set_data_from_node, action, ancestry)
+
+        if to_type in {'set_orientation', 'rotation'}:
+            action = getIpo(to_id)
+            set_data_from_node = defDict[from_id]
+            translateOrientationInterpolator(set_data_from_node, action, ancestry)
+
+        if to_type == 'set_scale':
+            action = getIpo(to_id)
+            set_data_from_node = defDict[from_id]
+            translateScalarInterpolator(set_data_from_node, action, ancestry)
+
+        if to_type == 'set_point':
+            action = getIpo(to_id)
+            set_data_from_node = defDict[from_id]
+            translateCoordinateInterpolator(set_data_from_node, action, ancestry)
+
+    elif from_type == 'bindTime':
+        action = getIpo(from_id)
+        time_node = defDict[to_id]
+        translateTimeSensor(time_node, action, ancestry)
+
+def importRoute(node, ancestry):
+    """
+    Animation route only at the moment
+    """
+
+    if node.getFieldAsString("fromNode", None, ancestry) and node.getFieldAsString("toNode", None, ancestry) and node.getFieldAsString("fromField", None, ancestry) and node.getFieldAsString("toField", None, ancestry):
+        pass
+    elif not hasattr(node, 'fields'):
+        print(f"return not hasattr fields")
+        return
+
     """
     Handles routing nodes to each other
 
@@ -3633,13 +3666,16 @@ ROUTE vpTs.fraction_changed TO vpOI.set_fraction
 ROUTE champFly001.bindTime TO vpTs.set_startTime
     """
 
-    #from_id, from_type = node.id[1].split('.')
-    #to_id, to_type = node.id[3].split('.')
-
-    #value_changed
-    set_position_node = None
-    set_orientation_node = None
-    time_node = None
+    if len(node.fields) <= 0:
+        from_id = node.getFieldAsString("fromNode", None, ancestry)
+        from_type = node.getFieldAsString("fromField", None, ancestry)
+        to_id = node.getFieldAsString("toNode", None, ancestry)
+        to_type = node.getFieldAsString("toField", None, ancestry)
+        if from_id and from_type and to_id and to_type:
+            print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
+            importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
+        else:
+                print(f"Warning, invalid ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
 
     for field in node.fields:
         # print(f"return field {field}")
@@ -3648,35 +3684,12 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
                 from_id, from_type = field[1].split('.')
                 to_id, to_type = field[3].split('.')
                 print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
+                importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
+
             except:
-                print("Warning, invalid ROUTE", field)
+                print("Warning, invalid ROUTE", field[1], "to", field[3])
                 continue
 
-            if from_type == 'value_changed':
-                if to_type == 'set_position':
-                    action = getIpo(to_id)
-                    set_data_from_node = defDict[from_id]
-                    translatePositionInterpolator(set_data_from_node, action, ancestry)
-
-                if to_type in {'set_orientation', 'rotation'}:
-                    action = getIpo(to_id)
-                    set_data_from_node = defDict[from_id]
-                    translateOrientationInterpolator(set_data_from_node, action, ancestry)
-
-                if to_type == 'set_scale':
-                    action = getIpo(to_id)
-                    set_data_from_node = defDict[from_id]
-                    translateScalarInterpolator(set_data_from_node, action, ancestry)
-
-                if to_type == 'set_point':
-                    action = getIpo(to_id)
-                    set_data_from_node = defDict[from_id]
-                    translateCoordinateInterpolator(set_data_from_node, action, ancestry)
-
-            elif from_type == 'bindTime':
-                action = getIpo(from_id)
-                time_node = defDict[to_id]
-                translateTimeSensor(time_node, action, ancestry)
 
 
 def load_web3d(
@@ -3739,7 +3752,7 @@ def load_web3d(
             importViewpoint(bpycollection, node, ancestry, global_matrix)
         elif spec == 'HAnimHumanoid':
             importHAnimHumanoid(bpycollection, node, ancestry, global_matrix)
-        elif spec == 'Transform':
+        elif spec in ('Transform', 'HAnimSite', 'HAnimSegment'):
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
                 importTransform(bpycollection, node, ancestry, global_matrix)
