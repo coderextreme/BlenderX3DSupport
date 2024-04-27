@@ -3844,9 +3844,10 @@ def load_web3d(
                     if not node.blendData.animation_data:
                         node.blendData.animation_data_create()
                     node.blendData.animation_data.action = action
-                    track = node.blendData.animation_data.nla_tracks.new()
-                    track.name = "NLATRACK "+key
-                    node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
+                    # to add NLA, uncomment these lines
+                    #track = node.blendData.animation_data.nla_tracks.new()
+                    #track.name = "NLATRACK "+key
+                    #node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
 
     # Add in hierarchy
     if PREF_FLAT is False:
