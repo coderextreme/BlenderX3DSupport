@@ -1421,7 +1421,11 @@ def export(context, x3dv_export_settings):
                         if is_smooth:
                             # use Auto-Smooth angle, if enabled. Otherwise make
                             # the mesh perfectly smooth by creaseAngle > pi.
-                            ifs.creaseAngle = mesh.auto_smooth_angle if mesh.use_auto_smooth else 4.0
+                            uas = hasattr(mesh, "use_auto_smooth")
+                            asa = hasattr(mesh,"auto_smooth_angle")
+                            ifs.creaseAngle = 4.0
+                            if uas and asa:
+                                ifs.creaseAngle = mesh.auto_smooth_angle
 
                         if export_settings['x3dv_normals']:
                             # currently not optional, could be made so:

@@ -26,6 +26,7 @@ import shlex
 import math
 from math import sin, cos, pi
 from itertools import chain
+import mathutils
 
 texture_cache = {}
 material_cache = {}
@@ -1276,7 +1277,7 @@ def gzipOpen(path):
 
     if data is None:
         try:
-            filehandle = open(path, 'rU', encoding='utf-8', errors='surrogateescape')
+            filehandle = open(path, 'r', encoding='utf-8', errors='surrogateescape')
             data = filehandle.read()
             filehandle.close()
         except:
@@ -3064,8 +3065,9 @@ def importShape_ProcessObject(
         # solid=false, we don't support it yet.
         creaseAngle = geom.getFieldAsFloat('creaseAngle', None, ancestry)
         if creaseAngle is not None:
-            bpydata.auto_smooth_angle = creaseAngle
-            bpydata.use_auto_smooth = True
+            bpydata.set_sharp_from_angle(angle=creaseAngle)
+        else:
+            bpydata.polygons.foreach_set("use_smooth", [False] * len(bpydata.polygons))
 
         # Only ever 1 material per shape
         if bpymat:
@@ -3102,6 +3104,8 @@ def importShape_ProcessObject(
 
     if DEBUG:
         bpyob["source_line_no"] = geom.lineno
+
+    return bpyob
 
 
 def importText(geom, ancestry):
@@ -3185,6 +3189,7 @@ def importShape(bpycollection, node, ancestry, global_matrix):
 
     bpydata = None
     geom_spec = geom.getSpec()
+    coord = geom.getChildBySpec('Coordinate')
 
     # ccw is handled by every geometry importer separately; some
     # geometries are easier to flip than others
@@ -3194,30 +3199,25 @@ def importShape(bpycollection, node, ancestry, global_matrix):
 
         # There are no geometry importers that can legally return
         # no object.  It's either a bpy object, or an exception
-        importShape_ProcessObject(
+        bpypo = importShape_ProcessObject(
                 bpycollection, vrmlname, bpydata, geom, geom_spec,
                 node, bpymat, tex_has_alpha, texmtx,
                 ancestry, global_matrix)
 
     else:
+        bpypo = None
         print('\tImportX3D warning: unsupported type "%s"' % geom_spec)
+    
+    return [ geom, bpypo, coord ]
 
-def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
+def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin):
     vrmlname = node.getDefName()
     # print(vrmlname)
     if not vrmlname:
         vrmlname = 'HAnimHumanoid'
 
-    skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
-    if skinCoord:
-        points = skinCoord.getFieldAsArray('point', 0, ancestry)
-        bpymesh = bpy.data.meshes.new(name="skinCoord")
-        bpymesh.vertices.add(len(points) // 3)
-        bpymesh.vertices.foreach_set('co', points)
-        print(f"Mesh is {bpymesh}")
-
     # Create armature and object
-    armature_data = bpy.data.armatures.new(vrmlname)
+    armature_data = bpy.data.armatures.new("humanoid_root")
     skeleton = bpy.data.objects.new(vrmlname, armature_data)
 
     # Link object to collection and make it active
@@ -3233,35 +3233,47 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
 
 
     # Process children joints, including USE, if present
-    child = node.getChildBySpec('HAnimJoint') # 'HAnimJoint'
-    joints = []
-    segments = []
     # joints.append((vrmlname, (0,0,0), (0,0,0), (), ()))
-    importHAnimJoint(joints, segments, child, ancestry, vrmlname, parent_center=[0, 0, 0])
-
-    jointSkin = {}
+    child = node.getChildBySpec('HAnimJoint') # 'HAnimJoint'
+    first_joint_name = child.getFieldAsString('name', None, ancestry)
+    child_center = child.getFieldAsFloatTuple('center', None, ancestry)
+    #skinCoordIndex = child.getFieldAsArray('skinCoordIndex', 0, ancestry)
+    #skinCoordWeight = child.getFieldAsArray('skinCoordWeight', 0, ancestry)
+    print(f"Joint {first_joint_name} {child_center}")
+    # joints.append((first_joint_name, (child_center[0], child_center[1], child_center[2]), (0, 0, 0), skinCoordWeight, skinCoordIndex))
+    importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=child_center[:])
 
     # Create bones for each joint
     for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
-        print(f"Joint {joint_name} {joint_start} {joint_end}")
+        # print(f"Joint {joint_name} {joint_start} {joint_end}")
         if not joint_name:
             joint_name = vrmlname
         # bpy.ops.armature.bone_primitive_add(name=joint_name)
         new_segment = armature_data.edit_bones.new(joint_name)
+        child.blendData = child.blendObject = new_segment
+        #print(f"Created {joint_name} {new_segment}")
         # new_segment = skeleton.data.edit_bones[joint_name]
+        matrix_world_inv = skeleton.matrix_world.inverted()
         new_segment.head = joint_start
         new_segment.tail = joint_end
+
+        bpy.ops.object.mode_set(mode='POSE')
+        pose_bone = skeleton.pose.bones.get(joint_name)
+        if pose_bone:
+            pose_bone.bone.select = True
+            # pose_bone.location = pose_bone.location = matrix_world_inv @ pose_bone.bone.matrix_local.inverted() @ mathutils.Vector(new_segment.head)
+        bpy.ops.object.mode_set(mode='EDIT')
+        print(f"Creating {joint_name} {joint_start} {joint_end}")
         if joint_name != vrmlname:
             jointSkin[joint_name] = {
                         'skinCoordWeight' : skinCoordWeight,
                         'skinCoordIndex' : skinCoordIndex
                         }
-            # print(f"adding {jointSkin[joint_name]['skinCoordIndex']}, {jointSkin[joint_name]['skinCoordWeight']}")
+            #print(f"Adding {joint_name} {len(jointSkin[joint_name]['skinCoordIndex'])} indexes, {len(jointSkin[joint_name]['skinCoordWeight'])} weights")
 
     for segment in segments:
         bpy.ops.object.mode_set(mode='EDIT')
         parent_joint, child_joint = segment
-        print(f"Segment {parent_joint} {child_joint}")
         if parent_joint in skeleton.data.edit_bones:
             parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
         else:
@@ -3269,27 +3281,14 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix):
 
         if child_joint in skeleton.data.edit_bones:
             child = skeleton.data.edit_bones[child_joint]
+            child.parent = parent
         else:
             child = None
-        child.parent = parent
-
-        bpy.ops.object.mode_set(mode="OBJECT")
-
-        for obj in bpy.data.objects:
-            if obj.type == 'MESH':
-                if obj.parent == skeleton:
-                    child_group = obj.vertex_groups.get(child_joint)
-                    if child_group is None:
-                        child_group = obj.vertex_groups.new(name=child_joint)
-                    for wi in range(len(jointSkin[child_joint]['skinCoordIndex'])):
-                        print(f"Index {jointSkin[child_joint]['skinCoordIndex'][wi]} weight {jointSkin[child_joint]['skinCoordWeight'][wi]}")
-                        child_group.add([jointSkin[child_joint]['skinCoordIndex'][wi]], jointSkin[child_joint]['skinCoordWeight'][wi], 'REPLACE')
 
 
     bpyob.matrix_world = getFinalMatrix(node, None, ancestry, global_matrix)
 
-    bpy.ops.object.mode_set(mode='OBJECT')
-
+    return skeleton
 
 
 def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, parent_center=[0, 0, 0]):
@@ -3300,7 +3299,7 @@ def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, pa
         if not child_bone_name:
             child_bone_name = parent_bone_name
         segments.append((parent_bone_name, child_bone_name))
-        print(f"Segment IHAJs {parent_bone_name} {child_bone_name}")
+        # print(f"Segment IHAJs {parent_bone_name} {child_bone_name}")
         importHAnimJoint(joints, segments, child, ancestry, parent_bone_name, parent_center)
 
 def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, parent_center=[0, 0, 0]):
@@ -3322,7 +3321,7 @@ def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, p
             child_center = [0, 0, 0]
         joints.append((child_bone_name, (child_center[0], child_center[1], child_center[2]), (parent_center[0], parent_center[1], parent_center[2]), skinCoordWeight, skinCoordIndex))
 
-        print(f"Joint IHAJ {joints[-1]}")
+        # print(f"Joint IHAJ {joints[-1]}")
         children = child.getChildrenBySpec('HAnimJoint')
         if children:
             importHAnimJoints(joints, segments, children, ancestry, child_bone_name, child_center)
@@ -3606,6 +3605,7 @@ def translateTimeSensor(node, action, ancestry):
 
 def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
 
+    bpy.ops.object.mode_set(mode='POSE')
     routeIpoDict = node.getRouteIpoDict()
 
     def getIpo(act_id):
@@ -3613,7 +3613,7 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
             action = routeIpoDict[act_id]
         except:
             action = routeIpoDict[act_id] = bpy.data.actions.new(act_id)
-        print(f"return action {act_id} {action}")
+        #print(f"return action {act_id} {action}")
         return action
 
     # for getting definitions
@@ -3625,7 +3625,7 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
             set_data_from_node = defDict[from_id]
             translatePositionInterpolator(set_data_from_node, action, ancestry)
 
-        if to_type in {'set_orientation', 'rotation'}:
+        if to_type in {'set_orientation', 'rotation', "set_rotation"}:
             action = getIpo(to_id)
             set_data_from_node = defDict[from_id]
             translateOrientationInterpolator(set_data_from_node, action, ancestry)
@@ -3653,7 +3653,7 @@ def importRoute(node, ancestry):
     if node.getFieldAsString("fromNode", None, ancestry) and node.getFieldAsString("toNode", None, ancestry) and node.getFieldAsString("fromField", None, ancestry) and node.getFieldAsString("toField", None, ancestry):
         pass
     elif not hasattr(node, 'fields'):
-        print(f"return not hasattr fields")
+        # print(f"return not hasattr fields")
         return
 
     """
@@ -3672,25 +3672,31 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
         to_id = node.getFieldAsString("toNode", None, ancestry)
         to_type = node.getFieldAsString("toField", None, ancestry)
         if from_id and from_type and to_id and to_type:
-            print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
+            # print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
             importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
-        else:
-                print(f"Warning, invalid ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
+    else:
+        for field in node.fields:
+            # print(f"return field {field}")
+            if field and field[0] == 'ROUTE':
+                try:
+                    from_id, from_type = field[1].split('.')
+                    to_id, to_type = field[3].split('.')
+                    # print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
+                    importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
 
-    for field in node.fields:
-        # print(f"return field {field}")
-        if field and field[0] == 'ROUTE':
-            try:
-                from_id, from_type = field[1].split('.')
-                to_id, to_type = field[3].split('.')
-                print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
-                importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
+                except:
+                    print("Warning, invalid ROUTE", field[1], "to", field[3])
+                    continue
 
-            except:
-                print("Warning, invalid ROUTE", field[1], "to", field[3])
-                continue
-
-
+def importSkinWeights(obj, joint, jointCoord, end):
+    group = obj.vertex_groups.get(joint)
+    if group is None:
+        group = obj.vertex_groups.new(name=joint)
+        # print(f"Created group {joint}");
+    print(f"Index {end} joint {joint}")
+    for wi in range(len(jointCoord['skinCoordIndex'])):
+        # print(f"Index {end} joint {joint} {jointCoord['skinCoordIndex'][wi]} weight {jointCoord['skinCoordWeight'][wi]}")
+        group.add([jointCoord['skinCoordIndex'][wi]], jointCoord['skinCoordWeight'][wi], 'REPLACE')
 
 def load_web3d(
         bpycontext,
@@ -3729,6 +3735,16 @@ def load_web3d(
     # fill with tuples - (node, [parents-parent, parent])
     all_nodes = root_node.getSerialized([], [])
 
+    all_shapes = []
+    skinCoords = []
+
+    for node, ancestry in all_nodes:
+        spec = node.getSpec()
+
+        if spec.endswith('Shape'):
+            shape = importShape(bpycollection, node, ancestry, global_matrix)
+            all_shapes.append(shape)
+
     for node, ancestry in all_nodes:
         #if 'castle.wrl' not in node.getFilename():
         #   continue
@@ -3744,15 +3760,47 @@ def load_web3d(
             # Note, include this function so the VRML/X3D importer can be extended
             # by an external script. - gets first pick
             pass
-        if spec == 'Shape':
-            importShape(bpycollection, node, ancestry, global_matrix)
-        elif spec in {'PointLight', 'DirectionalLight', 'SpotLight'}:
+        #if spec == 'Shape':
+        #    importShape(bpycollection, node, ancestry, global_matrix)
+        # add el below
+        if spec in {'PointLight', 'DirectionalLight', 'SpotLight'}:
             importLamp(bpycollection, node, spec, ancestry, global_matrix)
         elif spec == 'Viewpoint':
             importViewpoint(bpycollection, node, ancestry, global_matrix)
         elif spec == 'HAnimHumanoid':
-            importHAnimHumanoid(bpycollection, node, ancestry, global_matrix)
-        elif spec in ('Transform', 'HAnimSite', 'HAnimSegment'):
+            joints = []
+            segments = []
+            jointSkin = {}
+            meshobj = None
+            skeleton = importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin)
+            # skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
+            skinCoord = node.getChildBySpec('Coordinate')
+            if skinCoord:
+                if skinCoord.getFieldAsString("containerField", None, ancestry) == "skinCoord":
+                    # print(f"Skin coord is {skinCoord}")
+                    for shape in all_shapes:
+                        print(f"Skin mesh is\n{shape[0]}\n{shape[1]}\n{shape[2]}")
+                        if skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
+                            if shape[0] and shape[1]:
+                                meshobj = shape[1]
+                                print("Got mesh obj")
+            else:
+                print("No skinCoord, no skin weights, no skin animation")
+
+
+            bpy.ops.object.mode_set(mode="OBJECT")
+            imported = []
+            for segment in segments:
+                parent_joint, child_joint = segment
+                # print(f"Segment {parent_joint} {child_joint}")
+                if meshobj and child_joint not in imported:
+                    importSkinWeights(meshobj, child_joint, jointSkin[child_joint], "child")
+                    imported.append(child_joint)
+                if meshobj and parent_joint not in imported:
+                    importSkinWeights(meshobj, parent_joint, jointSkin[parent_joint], "parent")
+                    imported.append(parent_joint)
+
+        elif spec in ('Transform', 'HAnimSite', 'HAnimJoint', 'HAnimHumanoid', 'HAnimSegment'):
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
                 importTransform(bpycollection, node, ancestry, global_matrix)
@@ -3767,6 +3815,7 @@ def load_web3d(
     for node, ancestry in all_nodes:
         importRoute(node, ancestry)
 
+    bpy.ops.object.mode_set(mode='OBJECT')
     for node, ancestry in all_nodes:
         if node.isRoot():
             # we know that all nodes referenced from will be in
@@ -3778,15 +3827,28 @@ def load_web3d(
 
                 # Assign anim curves
                 node = defDict[key]
+                bone = None
+                if skeleton:
+                    if skeleton and key in skeleton.data.bones:
+                        bone = skeleton.data.bones[key]
                 if node.blendData is None:  # Add an object if we need one for animation
-                    node.blendData = node.blendObject = bpy.data.objects.new('AnimOb', None)  # , name)
+                    node.blendData = node.blendObject = bpy.data.objects.new(key, None)  # need to assign a bone somehow
+                    if bone:
+                        node.blendData.location = bone.head
                     bpycollection.objects.link(node.blendObject)
                     node.blendObject.select_set(True)
+                    if bone:
+                        node.blendData.location = bone.head
 
-                if node.blendData.animation_data is None:
+                if not node.blendData.animation_data:
                     node.blendData.animation_data_create()
 
                 node.blendData.animation_data.action = action
+                track = node.blendData.animation_data.nla_tracks.new()
+                track.name = "NLATRACK"
+                # track.strips.new(name=key, action=node.blendData.animation_data.action)
+                # track.strips.new(type='META_STRIP', frame_start=0, frame_end=100, meta_strip_elem=node.blendData.animation_data.action)
+                track.strips.new(name=action.name, start=0, action=action)
 
     # Add in hierarchy
     if PREF_FLAT is False:
