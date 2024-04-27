@@ -3233,57 +3233,56 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
 
 
     # Process children joints, including USE, if present
-    # joints.append((vrmlname, (0,0,0), (0,0,0), (), ()))
     child = node.getChildBySpec('HAnimJoint') # 'HAnimJoint'
-    first_joint_name = child.getFieldAsString('name', None, ancestry)
-    child_center = child.getFieldAsFloatTuple('center', None, ancestry)
-    #skinCoordIndex = child.getFieldAsArray('skinCoordIndex', 0, ancestry)
-    #skinCoordWeight = child.getFieldAsArray('skinCoordWeight', 0, ancestry)
-    print(f"Joint {first_joint_name} {child_center}")
-    # joints.append((first_joint_name, (child_center[0], child_center[1], child_center[2]), (0, 0, 0), skinCoordWeight, skinCoordIndex))
-    importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=child_center[:])
+    if child:
+        first_joint_name = child.getFieldAsString('name', None, ancestry)
+        child_center = child.getFieldAsFloatTuple('center', None, ancestry)
+        print(f"Joint {first_joint_name} {child_center}")
+        importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=child_center[:])
 
-    # Create bones for each joint
-    for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
-        # print(f"Joint {joint_name} {joint_start} {joint_end}")
-        if not joint_name:
-            joint_name = vrmlname
-        # bpy.ops.armature.bone_primitive_add(name=joint_name)
-        new_segment = armature_data.edit_bones.new(joint_name)
-        child.blendData = child.blendObject = new_segment
-        #print(f"Created {joint_name} {new_segment}")
-        # new_segment = skeleton.data.edit_bones[joint_name]
-        matrix_world_inv = skeleton.matrix_world.inverted()
-        new_segment.head = joint_start
-        new_segment.tail = joint_end
+        # Create bones for each joint
+        for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
+            # print(f"Joint {joint_name} {joint_start} {joint_end}")
+            if not joint_name:
+                joint_name = vrmlname
+            # bpy.ops.armature.bone_primitive_add(name=joint_name)
+            new_segment = armature_data.edit_bones.new(joint_name)
+            child.blendData = child.blendObject = new_segment
+            #print(f"Created {joint_name} {new_segment}")
+            # new_segment = skeleton.data.edit_bones[joint_name]
+            matrix_world_inv = skeleton.matrix_world.inverted()
+            new_segment.head = joint_start
+            new_segment.tail = joint_end
 
-        bpy.ops.object.mode_set(mode='POSE')
-        pose_bone = skeleton.pose.bones.get(joint_name)
-        if pose_bone:
-            pose_bone.bone.select = True
-            # pose_bone.location = pose_bone.location = matrix_world_inv @ pose_bone.bone.matrix_local.inverted() @ mathutils.Vector(new_segment.head)
-        bpy.ops.object.mode_set(mode='EDIT')
-        print(f"Creating {joint_name} {joint_start} {joint_end}")
-        if joint_name != vrmlname:
-            jointSkin[joint_name] = {
-                        'skinCoordWeight' : skinCoordWeight,
-                        'skinCoordIndex' : skinCoordIndex
-                        }
-            #print(f"Adding {joint_name} {len(jointSkin[joint_name]['skinCoordIndex'])} indexes, {len(jointSkin[joint_name]['skinCoordWeight'])} weights")
+            bpy.ops.object.mode_set(mode='POSE')
+            pose_bone = skeleton.pose.bones.get(joint_name)
+            if pose_bone:
+                pose_bone.bone.select = True
+                # pose_bone.location = pose_bone.location = matrix_world_inv @ pose_bone.bone.matrix_local.inverted() @ mathutils.Vector(new_segment.head)
+            bpy.ops.object.mode_set(mode='EDIT')
+            print(f"Creating {joint_name} {joint_start} {joint_end}")
+            if joint_name != vrmlname:
+                jointSkin[joint_name] = {
+                            'skinCoordWeight' : skinCoordWeight,
+                            'skinCoordIndex' : skinCoordIndex
+                            }
+                #print(f"Adding {joint_name} {len(jointSkin[joint_name]['skinCoordIndex'])} indexes, {len(jointSkin[joint_name]['skinCoordWeight'])} weights")
 
-    for segment in segments:
-        bpy.ops.object.mode_set(mode='EDIT')
-        parent_joint, child_joint = segment
-        if parent_joint in skeleton.data.edit_bones:
-            parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
-        else:
-            parent = None
+        for segment in segments:
+            bpy.ops.object.mode_set(mode='EDIT')
+            parent_joint, child_joint = segment
+            if parent_joint in skeleton.data.edit_bones:
+                parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
+            else:
+                parent = None
 
-        if child_joint in skeleton.data.edit_bones:
-            child = skeleton.data.edit_bones[child_joint]
-            child.parent = parent
-        else:
-            child = None
+            if child_joint in skeleton.data.edit_bones:
+                child = skeleton.data.edit_bones[child_joint]
+                child.parent = parent
+            else:
+                child = None
+    else:
+        print("Couldn't find child HAnimJoint")
 
 
     bpyob.matrix_world = getFinalMatrix(node, None, ancestry, global_matrix)
