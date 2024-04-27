@@ -3815,7 +3815,7 @@ def load_web3d(
     for node, ancestry in all_nodes:
         importRoute(node, ancestry)
 
-    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.mode_set(mode='POSE')
     for node, ancestry in all_nodes:
         if node.isRoot():
             # we know that all nodes referenced from will be in
@@ -3829,26 +3829,23 @@ def load_web3d(
                 node = defDict[key]
                 bone = None
                 if skeleton:
-                    if skeleton and key in skeleton.data.bones:
-                        bone = skeleton.data.bones[key]
+                    if skeleton and key in skeleton.pose.bones:
+                        bone = skeleton.pose.bones[key]
                 if node.blendData is None:  # Add an object if we need one for animation
                     node.blendData = node.blendObject = bpy.data.objects.new(key, None)  # need to assign a bone somehow
                     if bone:
-                        node.blendData.location = bone.head
+                        node.blendData.location = [bone.head[0], bone.head[2], bone.head[1]]
                     bpycollection.objects.link(node.blendObject)
                     node.blendObject.select_set(True)
                     if bone:
-                        node.blendData.location = bone.head
+                        node.blendData.location = [bone.head[0], bone.head[2], bone.head[1]]
 
                 if not node.blendData.animation_data:
                     node.blendData.animation_data_create()
-
                 node.blendData.animation_data.action = action
                 track = node.blendData.animation_data.nla_tracks.new()
-                track.name = "NLATRACK"
-                # track.strips.new(name=key, action=node.blendData.animation_data.action)
-                # track.strips.new(type='META_STRIP', frame_start=0, frame_end=100, meta_strip_elem=node.blendData.animation_data.action)
-                track.strips.new(name=action.name, start=0, action=action)
+                track.name = "NLATRACK "+key
+                node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
 
     # Add in hierarchy
     if PREF_FLAT is False:
