@@ -32,7 +32,7 @@ texture_cache = {}
 material_cache = {}
 
 EPSILON = 0.0000001  # Very crude.
-PREF_TIME_MULT = 100
+PREF_TIME_MULT = 250
 
 def imageConvertCompat(path):
 
@@ -375,6 +375,9 @@ class vrmlNode(object):
                  'node_type',
                  'parent',
                  'children',
+                 'skeleton',   # no joints, segments or sites.  TODO
+                 'skinCoord',
+                 'skin',
                  'parent',
                  'array_data',
                  'reference',
@@ -3258,7 +3261,9 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
             pose_bone = skeleton.pose.bones.get(joint_name)
             if pose_bone:
                 pose_bone.bone.select = True
-                # pose_bone.location = pose_bone.location = matrix_world_inv @ pose_bone.bone.matrix_local.inverted() @ mathutils.Vector(new_segment.head)
+                # pose_bone.location = matrix_world_inv @ pose_bone.bone.matrix_local.inverted() @ mathutils.Vector(new_segment.head)
+            else:
+                print(f"There's no pose bone associated with {joint_name}")
             bpy.ops.object.mode_set(mode='EDIT')
             print(f"Creating {joint_name} {joint_start} {joint_end}")
             if joint_name != vrmlname:
@@ -3278,9 +3283,9 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
 
             if child_joint in skeleton.data.edit_bones:
                 child = skeleton.data.edit_bones[child_joint]
-                child.parent = parent
             else:
-                child = None
+                child = armature_data.edit_bones.new(child_joint)
+            child.parent = parent
     else:
         print("Couldn't find child HAnimJoint")
 
@@ -3702,7 +3707,7 @@ def load_web3d(
         filepath,
         *,
         PREF_FLAT=False,
-        PREF_TIME_MULT=10,
+        PREF_TIME_MULT=250,
         PREF_CIRCLE_DIV=16,
         global_matrix=None,
         HELPER_FUNC=None
@@ -3781,8 +3786,10 @@ def load_web3d(
                         print(f"Skin mesh is\n{shape[0]}\n{shape[1]}\n{shape[2]}")
                         if skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
                             if shape[0] and shape[1]:
-                                meshobj = shape[1]
                                 print("Got mesh obj")
+                                meshobj = shape[1]
+                                meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
+                                meshobj.modifiers['ArmatureToMesh'].object = skeleton
             else:
                 print("No skinCoord, no skin weights, no skin animation")
 
@@ -3799,11 +3806,11 @@ def load_web3d(
                     importSkinWeights(meshobj, parent_joint, jointSkin[parent_joint], "parent")
                     imported.append(parent_joint)
 
-        elif spec in ('Transform', 'HAnimSite', 'HAnimJoint', 'HAnimHumanoid', 'HAnimSegment'):
+        elif spec in ('Transform'):
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
                 importTransform(bpycollection, node, ancestry, global_matrix)
-            '''
+        '''
         # These are delt with later within importRoute
         elif spec=='PositionInterpolator':
             action = bpy.data.ipos.new('web3d_ipo', 'Object')
@@ -3830,10 +3837,10 @@ def load_web3d(
                 if skeleton:
                     if skeleton and key in skeleton.pose.bones:
                         bone = skeleton.pose.bones[key]
+                    else:
+                        print(f"There's no pose bone associated with key {key}")
                 if node.blendData is None:  # Add an object if we need one for animation
-                    node.blendData = node.blendObject = bpy.data.objects.new(key, None)  # need to assign a bone somehow
-                    if bone:
-                        node.blendData.location = [bone.head[0], bone.head[1], bone.head[2]]
+                    node.blendData = node.blendObject = bpy.data.objects.new(key, None)
                     bpycollection.objects.link(node.blendObject)
                     node.blendObject.select_set(True)
                     if bone:
@@ -3842,11 +3849,12 @@ def load_web3d(
                 if hasattr(node.blendData, "animation_data"):
                     if not node.blendData.animation_data:
                         node.blendData.animation_data_create()
-                    node.blendData.animation_data.action = action
-                    # to add NLA, uncomment these lines
-                    #track = node.blendData.animation_data.nla_tracks.new()
-                    #track.name = "NLATRACK "+key
-                    #node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
+                    if not node.blendData.animation_data.action:
+                        node.blendData.animation_data.action = action
+                    # to disable NLA, comment out these 3 lines
+                    track = node.blendData.animation_data.nla_tracks.new()
+                    track.name = "NLATRACK "+key
+                    node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
 
     # Add in hierarchy
     if PREF_FLAT is False:
@@ -3875,8 +3883,17 @@ def load_web3d(
 
         # Parent
         for parent, children in child_dict.items():
-            for c in children:
-                c.parent = parent
+            if parent and children:
+                for c in children:
+                    if c:
+                        if type(c) == type(parent):
+                            c.parent = parent
+                        else:
+                            print(f"Can't handle parent-child relationship, child {c} type {type(c)}, parent {parent} type {type(parent)}")
+                    else:
+                        print("Not a child")
+            else:
+                print("Children or parent may be None")
 
         # update deps
         bpycontext.view_layer.update()
@@ -3892,7 +3909,7 @@ def load_with_profiler(
     import cProfile
     import pstats
     pro = cProfile.Profile()
-    pro.runctx("load_web3d(context, filepath, PREF_FLAT=True, PREF_TIME_MULT=10,"
+    pro.runctx("load_web3d(context, filepath, PREF_FLAT=False, PREF_TIME_MULT=250,"
                "PREF_CIRCLE_DIV=16, global_matrix=global_matrix)",
                globals(), locals())
     st = pstats.Stats(pro)
@@ -3909,8 +3926,8 @@ def load(context,
 
     # loadWithProfiler(operator, context, filepath, global_matrix)
     load_web3d(context, filepath,
-               PREF_FLAT=True,
-               PREF_TIME_MULT=10,
+               PREF_FLAT=False,
+               PREF_TIME_MULT=250,
                PREF_CIRCLE_DIV=16,
                global_matrix=global_matrix,
                )
