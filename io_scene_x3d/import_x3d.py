@@ -3518,19 +3518,32 @@ def translatePositionInterpolator(node, action, ancestry):
 def translateCoordinateInterpolator(node, action, ancestry):
     key = node.getFieldAsArray('key', 0, ancestry)
     keyValue = node.getFieldAsArray('keyValue', 0, ancestry)
-    offset = len(keyValue) / len(key)
-    keyValues = []
-    for i, k in enumerate(key):
-        keyV = []
-        for of in range(offset):
-            keyV[of] = keyValue[of*offset+of]
-        keyValues.append(keyV)
+    offset = int(len(keyValue) / len(key) / 3)  # values divide by times divided by axes
+    print(f"ci {offset} = {len(keyValue)} / {len(key)}")
+    loc_x = action_fcurve_ensure(action, "location", 0)
+    loc_y = action_fcurve_ensure(action, "location", 1)
+    loc_z = action_fcurve_ensure(action, "location", 2)
 
+    curoff = 0
+    for i, time in enumerate(key):  # loop through time                 
+        # 0 1 2
+        for off in range(offset): # for each data point
+            # 0 1 2 up to offset
+            # curoff =  i*offset+off
+            #print(f" coordinate index {off} num coordinates {offset} time index {i} time {time} current offset {curoff}")
+            # then a vec3f
+            x = keyValue[curoff+0]
+            y = keyValue[curoff+1]
+            z = keyValue[curoff+2]
+            loc_x.keyframe_points.insert(time*PREF_TIME_MULT, x)
+            loc_y.keyframe_points.insert(time*PREF_TIME_MULT, y)
+            loc_z.keyframe_points.insert(time*PREF_TIME_MULT, z)
 
-    for time, coord in zip(key, KeyValues):
-        node.blendObject.keyframe_insert(data_path="location", frame=time*PREF_TIME_MULT, value=coord)
+            curoff = curoff + 3
 
-    bpy.ops.object.paths_calculate_motion_paths()
+    for fcu in (loc_x, loc_y, loc_z):
+        for kf in fcu.keyframe_points:
+            kf.interpolation = 'LINEAR'
 
 def translateOrientationInterpolator(node, action, ancestry):
     key = node.getFieldAsArray('key', 0, ancestry)
@@ -3609,7 +3622,7 @@ def translateTimeSensor(node, action, ancestry):
 
 def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
 
-    bpy.ops.object.mode_set(mode='POSE')
+    # bpy.ops.object.mode_set(mode='POSE')
     routeIpoDict = node.getRouteIpoDict()
 
     def getIpo(act_id):
@@ -3741,6 +3754,7 @@ def load_web3d(
 
     all_shapes = []
     skinCoords = []
+    skeleton = None
 
     for node, ancestry in all_nodes:
         spec = node.getSpec()
@@ -3821,7 +3835,8 @@ def load_web3d(
     for node, ancestry in all_nodes:
         importRoute(node, ancestry)
 
-    bpy.ops.object.mode_set(mode='POSE')
+    if skeleton:
+        bpy.ops.object.mode_set(mode='POSE')
     for node, ancestry in all_nodes:
         if node.isRoot():
             # we know that all nodes referenced from will be in
@@ -3833,6 +3848,7 @@ def load_web3d(
 
                 # Assign anim curves
                 node = defDict[key]
+                print(f"key {key} action {action} node {node}")
                 bone = None
                 if skeleton:
                     if skeleton and key in skeleton.pose.bones:
