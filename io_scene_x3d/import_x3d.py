@@ -3545,7 +3545,7 @@ def translateCoordinateInterpolator(node, action, ancestry):
         for kf in fcu.keyframe_points:
             kf.interpolation = 'LINEAR'
 
-def translateOrientationInterpolator(node, action, ancestry):
+def translateOrientationInterpolator(node, action, ancestry, to_id, skeleton):
     key = node.getFieldAsArray('key', 0, ancestry)
     keyValue = node.getFieldAsArray('keyValue', 4, ancestry)
 
@@ -3564,6 +3564,17 @@ def translateOrientationInterpolator(node, action, ancestry):
         rot_x.keyframe_points.insert(time*PREF_TIME_MULT, eul.x)
         rot_y.keyframe_points.insert(time*PREF_TIME_MULT, eul.y)
         rot_z.keyframe_points.insert(time*PREF_TIME_MULT, eul.z)
+        if skeleton:
+            bpy.ops.object.mode_set(mode='POSE')
+            pose_bone = skeleton.pose.bones.get(to_id)
+            if pose_bone:
+                #pose_bone.rotation_euler = (eul.x, eul.y, eul.z)
+                #pose_bone.keyframe_insert(data_path="rotation_euler", frame=time*PREF_TIME_MULT)
+                pose_bone.rotation_mode = 'AXIS_ANGLE'
+                pose_bone.rotation_axis_angle = (w, x, y, z)  # w in radians
+                pose_bone.keyframe_insert(data_path="rotation_axis_angle", frame=time*PREF_TIME_MULT)
+                pose_bone.rotation_mode = 'XYZ'  # EULER
+            bpy.ops.object.mode_set(mode='EDIT')
 
     for fcu in (rot_x, rot_y, rot_z):
         for kf in fcu.keyframe_points:
@@ -3620,7 +3631,7 @@ def translateTimeSensor(node, action, ancestry):
         time_cu.extend = Blender.IpoCurve.ExtendTypes.CYCLIC  # or - EXTRAP, CYCLIC_EXTRAP, CONST,
 
 
-def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
+def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton):
 
     # bpy.ops.object.mode_set(mode='POSE')
     routeIpoDict = node.getRouteIpoDict()
@@ -3645,7 +3656,7 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
         if to_type in {'set_orientation', 'rotation', "set_rotation"}:
             action = getIpo(to_id)
             set_data_from_node = defDict[from_id]
-            translateOrientationInterpolator(set_data_from_node, action, ancestry)
+            translateOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
 
         if to_type == 'set_scale':
             action = getIpo(to_id)
@@ -3662,7 +3673,7 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry):
         time_node = defDict[to_id]
         translateTimeSensor(time_node, action, ancestry)
 
-def importRoute(node, ancestry):
+def importRoute(node, ancestry, skeleton):
     """
     Animation route only at the moment
     """
@@ -3690,7 +3701,7 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
         to_type = node.getFieldAsString("toField", None, ancestry)
         if from_id and from_type and to_id and to_type:
             # print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
-            importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
+            importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton)
     else:
         for field in node.fields:
             # print(f"return field {field}")
@@ -3699,7 +3710,7 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
                     from_id, from_type = field[1].split('.')
                     to_id, to_type = field[3].split('.')
                     # print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
-                    importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry)
+                    importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton)
 
                 except:
                     print("Warning, invalid ROUTE", field[1], "to", field[3])
@@ -3833,7 +3844,7 @@ def load_web3d(
 
     # After we import all nodes, route events - anim paths
     for node, ancestry in all_nodes:
-        importRoute(node, ancestry)
+        importRoute(node, ancestry, skeleton)
 
     if skeleton:
         bpy.ops.object.mode_set(mode='POSE')
@@ -3862,6 +3873,7 @@ def load_web3d(
                     if bone:
                         node.blendData.location = [bone.head[0], bone.head[1], bone.head[2]]
 
+
                 if hasattr(node.blendData, "animation_data"):
                     if not node.blendData.animation_data:
                         node.blendData.animation_data_create()
@@ -3871,7 +3883,6 @@ def load_web3d(
                     track = node.blendData.animation_data.nla_tracks.new()
                     track.name = "NLATRACK "+key
                     node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
-
     # Add in hierarchy
     if PREF_FLAT is False:
         child_dict = {}
