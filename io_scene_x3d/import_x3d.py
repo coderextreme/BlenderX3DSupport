@@ -807,7 +807,7 @@ class vrmlNode(object):
                 try:
                     array_data = [float(val) for val in array_string]
                 except:
-                    print('\tWarning, could not parse array data from field')
+                    print(f'\tWarning, could not parse array data from field: {field} {array_string}')
 
             return array_data
 
@@ -1907,8 +1907,8 @@ def importMesh_IndexedFaceSet(geom, ancestry):
     ccw = geom.getFieldAsBool('ccw', True, ancestry)
     coord = geom.getChildBySpec('Coordinate')
     points = coord.getFieldAsArray('point', 3, ancestry)
-    if geom.node_type == NODE_REFERENCE:
-    #if coord.reference:
+    #if geom.node_type == NODE_REFERENCE:
+    if coord.reference:
         savepoints = points
         points = coord.getRealNode().parsed
         if not points:
@@ -3238,43 +3238,45 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
     # Process children joints, including USE, if present
     child = node.getChildBySpec('HAnimJoint') # 'HAnimJoint'
     if child:
-        first_joint_name = child.getFieldAsString('name', None, ancestry)
-        child_center = child.getFieldAsFloatTuple('center', None, ancestry)
-        print(f"Joint {first_joint_name} {child_center}")
-        importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=child_center[:])
+        # first_joint_name = child.getFieldAsString('name', None, ancestry)
+        first_joint_name = child.getDefName()
+        if not first_joint_name:
+            first_joint_name = child.getFieldAsString('name', None, ancestry)
+        joint_center = (0, 0, 0) # child.getFieldAsFloatTuple('center', None, ancestry)
+        print(f"Joint {first_joint_name} {joint_center}")
+        importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=joint_center[:])
 
         # Create bones for each joint
         for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
+            print(f"Creating {joint_name} {joint_start} {joint_end}")
             # print(f"Joint {joint_name} {joint_start} {joint_end}")
             if not joint_name:
                 joint_name = vrmlname
             # bpy.ops.armature.bone_primitive_add(name=joint_name)
             new_segment = armature_data.edit_bones.new(joint_name)
-            child.blendData = child.blendObject = new_segment
-            #print(f"Created {joint_name} {new_segment}")
             # new_segment = skeleton.data.edit_bones[joint_name]
+            #print(f"Created {joint_name} {new_segment}")
+            child.blendData = child.blendObject = new_segment
             matrix_world_inv = skeleton.matrix_world.inverted()
             new_segment.head = joint_start
             new_segment.tail = joint_end
 
-            bpy.ops.object.mode_set(mode='POSE')
-            pose_bone = skeleton.pose.bones.get(joint_name)
-            if pose_bone:
-                pose_bone.bone.select = True
+            # bpy.context.view_layer.objects.active = skeleton
+            #bpy.ops.object.mode_set(mode='POSE')
+            #pose_bone = skeleton.pose.bones.get(joint_name)
+            #if pose_bone:
+                # pose_bone.bone.select = True
                 # pose_bone.location = matrix_world_inv @ pose_bone.bone.matrix_local.inverted() @ mathutils.Vector(new_segment.head)
-            else:
-                print(f"There's no pose bone associated with {joint_name}")
-            bpy.ops.object.mode_set(mode='EDIT')
-            print(f"Creating {joint_name} {joint_start} {joint_end}")
+                # pose_bone.location = mathutils.Vector(new_segment.head)
+            #else:
+            #    print(f"There's no pose bone associated with {joint_name}")
             if joint_name != vrmlname:
                 jointSkin[joint_name] = {
                             'skinCoordWeight' : skinCoordWeight,
                             'skinCoordIndex' : skinCoordIndex
                             }
                 #print(f"Adding {joint_name} {len(jointSkin[joint_name]['skinCoordIndex'])} indexes, {len(jointSkin[joint_name]['skinCoordWeight'])} weights")
-
         for segment in segments:
-            bpy.ops.object.mode_set(mode='EDIT')
             parent_joint, child_joint = segment
             if parent_joint in skeleton.data.edit_bones:
                 parent = skeleton.data.edit_bones[parent_joint]  # some things don't have a parent
@@ -3545,9 +3547,17 @@ def translateCoordinateInterpolator(node, action, ancestry):
         for kf in fcu.keyframe_points:
             kf.interpolation = 'LINEAR'
 
-def translateOrientationInterpolator(node, action, ancestry, to_id, skeleton):
+def translateOrientationInterpolator(node, action, ancestry, to_id=None, skeleton=None):
     key = node.getFieldAsArray('key', 0, ancestry)
     keyValue = node.getFieldAsArray('keyValue', 4, ancestry)
+
+    pose_bone = None
+    if skeleton:
+        pose_bone = skeleton.pose.bones.get(to_id)
+    if pose_bone:
+        pose_bone.rotation_mode = 'XYZ'
+    else:
+        node.blendObject.rotation_mode = 'XYZ'
 
     rot_x = action_fcurve_ensure(action, "rotation_euler", 0)
     rot_y = action_fcurve_ensure(action, "rotation_euler", 1)
@@ -3564,21 +3574,23 @@ def translateOrientationInterpolator(node, action, ancestry, to_id, skeleton):
         rot_x.keyframe_points.insert(time*PREF_TIME_MULT, eul.x)
         rot_y.keyframe_points.insert(time*PREF_TIME_MULT, eul.y)
         rot_z.keyframe_points.insert(time*PREF_TIME_MULT, eul.z)
-        if skeleton:
-            bpy.ops.object.mode_set(mode='POSE')
-            pose_bone = skeleton.pose.bones.get(to_id)
-            if pose_bone:
-                #pose_bone.rotation_euler = (eul.x, eul.y, eul.z)
-                #pose_bone.keyframe_insert(data_path="rotation_euler", frame=time*PREF_TIME_MULT)
-                pose_bone.rotation_mode = 'AXIS_ANGLE'
-                pose_bone.rotation_axis_angle = (w, x, y, z)  # w in radians
-                pose_bone.keyframe_insert(data_path="rotation_axis_angle", frame=time*PREF_TIME_MULT)
-                pose_bone.rotation_mode = 'XYZ'  # EULER
-            bpy.ops.object.mode_set(mode='EDIT')
 
     for fcu in (rot_x, rot_y, rot_z):
         for kf in fcu.keyframe_points:
             kf.interpolation = 'LINEAR'
+
+def translateBoneOrientationInterpolator(node, action, ancestry, to_id=None, skeleton=None):
+    key = node.getFieldAsArray('key', 0, ancestry)
+    keyValue = node.getFieldAsArray('keyValue', 4, ancestry)
+
+    pose_bone = None
+    if skeleton:
+        pose_bone = skeleton.pose.bones.get(to_id)
+    if pose_bone:
+        pose_bone.rotation_mode = 'AXIS_ANGLE'
+        for time, (x, y, z, w) in zip(key, keyValue):
+            pose_bone.rotation_axis_angle = (w, x, y, z)
+            pose_bone.keyframe_insert(data_path="rotation_axis_angle", frame=time * PREF_TIME_MULT)
 
 
 # Untested!
@@ -3633,7 +3645,6 @@ def translateTimeSensor(node, action, ancestry):
 
 def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton):
 
-    # bpy.ops.object.mode_set(mode='POSE')
     routeIpoDict = node.getRouteIpoDict()
 
     def getIpo(act_id):
@@ -3656,7 +3667,11 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skelet
         if to_type in {'set_orientation', 'rotation', "set_rotation"}:
             action = getIpo(to_id)
             set_data_from_node = defDict[from_id]
-            translateOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
+            if skeleton:
+                print(f"Creating animation for bone {to_id}")
+                translateBoneOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
+            else:
+                translateOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
 
         if to_type == 'set_scale':
             action = getIpo(to_id)
@@ -3817,8 +3832,8 @@ def load_web3d(
                                 meshobj.modifiers['ArmatureToMesh'].object = skeleton
             else:
                 print("No skinCoord, no skin weights, no skin animation")
-
-
+        
+        
             bpy.ops.object.mode_set(mode="OBJECT")
             imported = []
             for segment in segments:
@@ -3830,7 +3845,9 @@ def load_web3d(
                 if meshobj and parent_joint not in imported:
                     importSkinWeights(meshobj, parent_joint, jointSkin[parent_joint], "parent")
                     imported.append(parent_joint)
-
+        
+        elif spec in ('HAnimSegment', 'HAnimSite'):
+                importTransform(bpycollection, node, ancestry, global_matrix)
         elif spec in ('Transform'):
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
@@ -3843,11 +3860,13 @@ def load_web3d(
             '''
 
     # After we import all nodes, route events - anim paths
-    for node, ancestry in all_nodes:
-        importRoute(node, ancestry, skeleton)
-
     if skeleton:
         bpy.ops.object.mode_set(mode='POSE')
+    for node, ancestry in all_nodes:
+        importRoute(node, ancestry, skeleton)
+    bpy.context.scene.frame_set(0)
+
+    bpy.ops.object.mode_set(mode='OBJECT')
     for node, ancestry in all_nodes:
         if node.isRoot():
             # we know that all nodes referenced from will be in
@@ -3859,7 +3878,7 @@ def load_web3d(
 
                 # Assign anim curves
                 node = defDict[key]
-                print(f"key {key} action {action} node {node}")
+                # print(f"key {key} action {action} node {node}")
                 bone = None
                 if skeleton:
                     if skeleton and key in skeleton.pose.bones:
@@ -3870,9 +3889,6 @@ def load_web3d(
                     node.blendData = node.blendObject = bpy.data.objects.new(key, None)
                     bpycollection.objects.link(node.blendObject)
                     node.blendObject.select_set(True)
-                    if bone:
-                        node.blendData.location = [bone.head[0], bone.head[1], bone.head[2]]
-
 
                 if hasattr(node.blendData, "animation_data"):
                     if not node.blendData.animation_data:
@@ -3880,9 +3896,9 @@ def load_web3d(
                     if not node.blendData.animation_data.action:
                         node.blendData.animation_data.action = action
                     # to disable NLA, comment out these 3 lines
-                    track = node.blendData.animation_data.nla_tracks.new()
-                    track.name = "NLATRACK "+key
-                    node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
+                    #track = node.blendData.animation_data.nla_tracks.new()
+                    #track.name = "NLATRACK "+key
+                    #node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
     # Add in hierarchy
     if PREF_FLAT is False:
         child_dict = {}
@@ -3915,7 +3931,17 @@ def load_web3d(
                     if c:
                         if type(c) == type(parent):
                             c.parent = parent
+                            # c.parent_type = 'KEEP_OFFSET'
                         else:
+                            #c.select_set(True)
+                            #skeleton.data.bones.active = parent.bone
+                            #bpy.ops.object.parent_set(type='BONE', keep_transform=True)
+                            if isinstance(c, bpy.types.EditBone):
+                                print(f"Child is EditBone")
+                                #c.bone.parent = parent
+                            if isinstance(parent, bpy.types.EditBone):
+                                print(f"Parent is EditBone")
+                                #c.parent = parent.bone
                             print(f"Can't handle parent-child relationship, child {c} type {type(c)}, parent {parent} type {type(parent)}")
                     else:
                         print("Not a child")
@@ -3925,6 +3951,8 @@ def load_web3d(
         # update deps
         bpycontext.view_layer.update()
         del child_dict
+
+    bpy.ops.object.mode_set(mode='OBJECT')
 
 
 def load_with_profiler(
