@@ -3242,7 +3242,9 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
         first_joint_name = child.getDefName()
         if not first_joint_name:
             first_joint_name = child.getFieldAsString('name', None, ancestry)
-        joint_center = (0, 0, 0) # child.getFieldAsFloatTuple('center', None, ancestry)
+        joint_center = child.getFieldAsFloatTuple('center', None, ancestry)
+        if joint_center is None:
+            joint_center = (0, 0, 0)
         print(f"Joint {first_joint_name} {joint_center}")
         importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=joint_center[:])
 
@@ -3258,8 +3260,8 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
             #print(f"Created {joint_name} {new_segment}")
             child.blendData = child.blendObject = new_segment
             matrix_world_inv = skeleton.matrix_world.inverted()
-            new_segment.head = joint_start
-            new_segment.tail = joint_end
+            new_segment.head = joint_end
+            new_segment.tail = joint_start
 
             # bpy.context.view_layer.objects.active = skeleton
             #bpy.ops.object.mode_set(mode='POSE')
@@ -3406,7 +3408,7 @@ def importLamp_SpotLight(node, ancestry):
 
     bpylamp = bpy.data.lights.new(vrmlname, 'SPOT')
     bpylamp.energy = intensity
-    bpylamp.distance = radius
+    bpylamp.cutoff_distance = radius
     bpylamp.color = color
     bpylamp.spot_size = cutOffAngle
     if beamWidth > cutOffAngle:
@@ -3547,17 +3549,9 @@ def translateCoordinateInterpolator(node, action, ancestry):
         for kf in fcu.keyframe_points:
             kf.interpolation = 'LINEAR'
 
-def translateOrientationInterpolator(node, action, ancestry, to_id=None, skeleton=None):
+def translateOrientationInterpolator(node, action, ancestry):
     key = node.getFieldAsArray('key', 0, ancestry)
     keyValue = node.getFieldAsArray('keyValue', 4, ancestry)
-
-    pose_bone = None
-    if skeleton:
-        pose_bone = skeleton.pose.bones.get(to_id)
-    if pose_bone:
-        pose_bone.rotation_mode = 'XYZ'
-    else:
-        node.blendObject.rotation_mode = 'XYZ'
 
     rot_x = action_fcurve_ensure(action, "rotation_euler", 0)
     rot_y = action_fcurve_ensure(action, "rotation_euler", 1)
@@ -3659,19 +3653,21 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skelet
     defDict = node.getDefDict()
 
     if from_type == 'value_changed':
-        if to_type == 'set_position':
+        if to_type in ('set_translation', 'set_position'):  # set translation may need some matrix multiplication
             action = getIpo(to_id)
             set_data_from_node = defDict[from_id]
+            print(f"Trying to create a position interpolator for joint {to_id} (may need something special?)")
             translatePositionInterpolator(set_data_from_node, action, ancestry)
 
         if to_type in {'set_orientation', 'rotation', "set_rotation"}:
             action = getIpo(to_id)
             set_data_from_node = defDict[from_id]
-            if skeleton:
-                print(f"Creating animation for bone {to_id}")
+            if skeleton and skeleton.pose.bones.get(to_id):
+                # print(f"Creating animation for joint {to_id}")
                 translateBoneOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
             else:
-                translateOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
+                print(f"Creating orientation animation for {to_id}")
+                translateOrientationInterpolator(set_data_from_node, action, ancestry)
 
         if to_type == 'set_scale':
             action = getIpo(to_id)
@@ -3804,9 +3800,6 @@ def load_web3d(
             # Note, include this function so the VRML/X3D importer can be extended
             # by an external script. - gets first pick
             pass
-        #if spec == 'Shape':
-        #    importShape(bpycollection, node, ancestry, global_matrix)
-        # add el below
         if spec in {'PointLight', 'DirectionalLight', 'SpotLight'}:
             importLamp(bpycollection, node, spec, ancestry, global_matrix)
         elif spec == 'Viewpoint':
@@ -3820,25 +3813,37 @@ def load_web3d(
             # skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
             skinCoord = node.getChildBySpec('Coordinate')
             if skinCoord:
-                if skinCoord.getFieldAsString("containerField", None, ancestry) == "skinCoord":
-                    # print(f"Skin coord is {skinCoord}")
+                #if skinCoord.getFieldAsString("containerField", None, ancestry) == "skinCoord":
+                    print(f"Skin coord is {skinCoord}")
                     for shape in all_shapes:
-                        print(f"Skin mesh is\n{shape[0]}\n{shape[1]}\n{shape[2]}")
-                        if skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
-                            if shape[0] and shape[1]:
-                                print("Got mesh obj")
-                                meshobj = shape[1]
-                                meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
-                                meshobj.modifiers['ArmatureToMesh'].object = skeleton
+                        if shape:
+                            print(f"Skin mesh is found")
+                            if skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
+                                if shape[0] and shape[1]:
+                                    print("Got mesh obj")
+                                    meshobj = shape[1]
+                                    meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
+                                    meshobj.modifiers['ArmatureToMesh'].object = skeleton
+                                else:
+                                    print("No mesh here for armature")
+                            else:
+                                print(f"DEFs match? {skinCoord.getRealNode().getDefName()} == {shape[2].getRealNode().getDefName()}")
+                        else:
+                            print(f"no shape {shape} ? all shapes is {all_shapes}")
+
+                #else:
+                #    print(f"Couldn't get containerField {skinCoord}")
             else:
                 print("No skinCoord, no skin weights, no skin animation")
         
         
+            print(f"mesh is {meshobj}")
             bpy.ops.object.mode_set(mode="OBJECT")
             imported = []
+            print(f"Number of segments {len(segments)}")
             for segment in segments:
                 parent_joint, child_joint = segment
-                # print(f"Segment {parent_joint} {child_joint}")
+                # print(f"Segment {parent_joint} {child_joint} loading weights")
                 if meshobj and child_joint not in imported:
                     importSkinWeights(meshobj, child_joint, jointSkin[child_joint], "child")
                     imported.append(child_joint)
@@ -3884,7 +3889,9 @@ def load_web3d(
                     if skeleton and key in skeleton.pose.bones:
                         bone = skeleton.pose.bones[key]
                     else:
-                        print(f"There's no pose bone associated with key {key}")
+                        print(f"There's no pose bone associated with key {key}, probably using a regular interpolator")
+                else:
+                        print(f"There's no skeleton")
                 if node.blendData is None:  # Add an object if we need one for animation
                     node.blendData = node.blendObject = bpy.data.objects.new(key, None)
                     bpycollection.objects.link(node.blendObject)
@@ -3896,9 +3903,9 @@ def load_web3d(
                     if not node.blendData.animation_data.action:
                         node.blendData.animation_data.action = action
                     # to disable NLA, comment out these 3 lines
-                    #track = node.blendData.animation_data.nla_tracks.new()
-                    #track.name = "NLATRACK "+key
-                    #node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
+                    track = node.blendData.animation_data.nla_tracks.new()
+                    track.name = "NLATRACK "+key
+                    node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
     # Add in hierarchy
     if PREF_FLAT is False:
         child_dict = {}
