@@ -47,7 +47,38 @@ class Counter:
 
 counter = Counter()
 
+bvh2HAnim = {
+"LeftUpLeg" : "l_thigh",
+"LeftLeg" : "l_calf",
+"LeftFoot" : "l_talus",
+"LeftToe" : "l_tarsal_proximal_phalanx_2",
+"RightUpLeg" : "r_thigh",
+"RightLeg" : "r_calf",
+"RightFoot" : "r_talus",
+"RightToe" : "r_tarsal_proximal_phalanx_2",
+"Hips" : "pelvis",
+"Spine" : "sacrum",
+"Spine1" : "l5",
+"Spine2" : "t12",
+"Neck" : "c7",
+"Head" : "skull",
+"LeftShoulder" : "l_shoulder",
+"LeftArm" : "l_upperarm",
+"LeftForeArm" : "l_forearm",
+"LeftHand" : "l_carpal",
+"RightShoulder" : "r_shoulder",
+"RightArm" : "r_upperarm",
+"RightForeArm" : "r_forearm",
+"RightHand" : "r_carpal"
+}
+
 def substitute(subs):
+    if subs in bvh2HAnim:
+        # print(f"converting {subs} to {bvh2HAnim[subs]}")
+        subs = bvh2HAnim[subs]
+    else:
+        pass
+        # print(f"{subs} not found")
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
 
 JointsSegments = {
@@ -200,6 +231,7 @@ JointsSegments = {
 "r_carpal_proximal_interphalangeal_5" : "r_carpal_middle_phalanx_5",
 "r_carpal_distal_interphalangeal_5" : "r_carpal_distal_phalanx_5",
 }
+
 
 # h3d defines
 H3D_TOP_LEVEL = 'TOP_LEVEL_TI'
@@ -469,24 +501,30 @@ def export(context, x3dv_export_settings):
     def name_used(DEF):
         if DEF in uuid_defs.keys():
             uuid_defs[DEF] = uuid_defs[DEF] + 1
+            print(f"ex DEF {DEF} used {uuid_defs[DEF]}")
             return True
         else:
             uuid_defs.update({DEF: 1})
+            print(f"ex DEF {DEF} used {uuid_defs[DEF]}")
             return False
 
     def setUSEDEF(prefix, name, node):
         if name is None:
             name = ""
-        else:
-            node.name = substitute(name)
         if name.startswith(prefix):
-            pname = substitute(name)
-        else:
-            pname = substitute(prefix+name)
+            name = name[len(prefix):]
+        node.name = substitute(name)
+        pname = prefix+substitute(name)
         if name_used(pname):
-            node.USE = pname
+            # create a new empty copy for USE
+            # if name == "SiteShape":
+            node = type(node)(USE=pname)
+        
+            print(f"{pname} is the value of USE")
         else:
             node.DEF = pname
+            print(f"{pname} is the value of DEF")
+        return node
 
     # store files to copy
     copy_set = set()
@@ -727,22 +765,22 @@ def export(context, x3dv_export_settings):
                       if skinCoordWeight is not None:
                          node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   else:
-                      #site_shape = Shape(
-                      #                  #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-                      #                  #geometry=Box(size = (0.05, 0.05, 0.05))
-                      #        )
-                      #setUSEDEF("", "SiteShape", site_shape)
-                      site = HAnimSite(# translation=loc[:],
-                          #children=[
-                          #    Transform(
-                          #        translation=center[:],
-                          #        children=[
-                          #            site_shape
-                          #        ]
-                          #    )
-                          #]
+                      site_shape = Shape(
+                                        appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+                                        geometry=Box(size = (0.05, 0.05, 0.05))
+                              )
+                      site_shape = setUSEDEF("", "SiteShape", site_shape)
+                      site = HAnimSite( # translation=loc[:],
+                          children=[
+                              Transform(
+                                  translation=center[:],
+                                  children=[
+                                      site_shape
+                                  ]
+                              )
+                          ]
                       )
-                      setUSEDEF(HANIM_DEF_PREFIX, segment_name+"_tip", site)
+                      setUSEDEF(HANIM_DEF_PREFIX, "SITE_FOR_"+segment_name+"_tip", site)
                       objname=substitute(obj.name)
                       segmentname=substitute(segment_name)
                       #joint_shape = Shape()
@@ -835,33 +873,35 @@ def export(context, x3dv_export_settings):
                 skinCoordWeight = []
                 skinCoordIndex = []
         # joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
-        if not joint.name.endswith("_end"):  # exclude sites for now
-            try:
+        if not joint.name.endswith("_tip"):  # exclude sites for now
+            if joint.name in segment_lookup:
                 segment_name = segment_lookup[joint.name]
-            except KeyError:
-                segment_name = "SEGMENT_FOR_"+joint.name
+            else:
+                segment_name = "SEGMENT_FOR_"+substitute(joint.name)
             node = b2xHAnimNode(joint, matrix, joint.name, "HAnimJoint", segment_name=segment_name, skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
+            setUSEDEF(HANIM_DEF_PREFIX, joint.name, node)
 
             for joint_child in joint_lookup[joint.name]['joint_children']:
                 child = b2xJoint(joint, joint_child.joint, joint_child.joint.matrix, joint_lookup, segment_lookup, armature, skinCoordInfo)
                 node.children.append(child)
             return node
         else:
-            site_name = joint.name
-            #site_shape = Shape(
-            #            #appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
-            #            #geometry=Box(size = (0.05, 0.05, 0.05))
-            #        )
-            #setUSEDEF("", "SiteShape", site_shape)
+            site_name = "SITE_FOR_"+joint.name
+            site_shape = Shape(
+                        appearance=Appearance(material=Material(diffuseColor = (0, 0, 1))),
+                        geometry=Box(size = (0.05, 0.05, 0.05))
+                    )
+            site_shape = setUSEDEF("", "SiteShape", site_shape)
             site = HAnimSite(children=[
-                #Transform( children=[
-                #    site_shape
-                #])
+                Transform( children=[
+                    site_shape
+                ])
             ])
             setUSEDEF(HANIM_DEF_PREFIX, site_name, site)
             segment = HAnimSegment(children=[ site ])
-            setUSEDEF(HANIM_DEF_PREFIX+"SEGMENT_FOR_", site_name, segment)
+            setUSEDEF(HANIM_DEF_PREFIX,"SEGMENT_FOR_"+substiture(site_name), segment)
             node = HAnimJoint( children=[ segment ]) # TODO maybe return site?
+            setUSEDEF(HANIM_DEF_PREFIX, joint.name, node)
             return node
 
     class HAnimNode:
@@ -1000,7 +1040,8 @@ def export(context, x3dv_export_settings):
         for joint in armature.data.bones:
             if not joint.name.endswith("_end"):  # exclude sites for now
                 node = HAnimJoint()
-                setUSEDEF(substitute(HANIM_DEF_PREFIX+joint.name), None, node)
+                node.USE = HANIM_DEF_PREFIX+substitute(joint.name)
+                node.name = None
                 humanoid.joints.append(node)
         scale = 1 # getscenescale(scene)
         unit_settings = scene.unit_settings
@@ -2211,6 +2252,7 @@ def export(context, x3dv_export_settings):
     def export_main():
         world = scene.world
         image_textures = {}
+        uuid_defs = {}
 
         x3dmodel = X3D(profile='Immersive',version='4.0')
         x3dmodel.Scene = Scene()
@@ -2248,20 +2290,20 @@ def export(context, x3dv_export_settings):
         x3dmodel.Scene.children.append(
             PointLight(location=(0, 0, 10))
         )
-        #site_shape = Shape(
-        #            geometry=Box(size = (0.05, 0.05, 0.05)),
-        #            appearance=Appearance(
-        #                material=Material(
-        #                    diffuseColor = (0, 0, 1, 0),
-        #                    transparency = 1
-        #                ))
-        #        )
-        #setUSEDEF("", "SiteShape", site_shape)
-        #x3dmodel.Scene.children.append(
-        #    Transform( children=[
-        #        site_shape
-        #    ])
-        #)
+        site_shape = Shape(
+                    geometry=Box(size = (0.05, 0.05, 0.05)),
+                    appearance=Appearance(
+                        material=Material(
+                            diffuseColor = (0, 0, 1),
+                            transparency = 1
+                        ))
+                )
+        site_shape = setUSEDEF("", "SiteShape", site_shape)
+        x3dmodel.Scene.children.append(
+            Transform( children=[
+                site_shape
+            ])
+        )
         #x3dmodel.Scene.children.append(
         #    Transform( children=[
         #        Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),

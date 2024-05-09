@@ -30,19 +30,76 @@ from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
 
+bvh2HAnim = {
+"LeftUpLeg" : "l_thigh",
+"LeftLeg" : "l_calf",
+"LeftFoot" : "l_talus",
+"LeftToe" : "l_tarsal_proximal_phalanx_2",
+"RightUpLeg" : "r_thigh",
+"RightLeg" : "r_calf",
+"RightFoot" : "r_talus",
+"RightToe" : "r_tarsal_proximal_phalanx_2",
+"Hips" : "pelvis",
+"Spine" : "sacrum",
+"Spine1" : "l5",
+"Spine2" : "t12",
+"Neck" : "c7",
+"Head" : "skull",
+"LeftShoulder" : "l_shoulder",
+"LeftArm" : "l_upperarm",
+"LeftForeArm" : "l_forearm",
+"LeftHand" : "l_carpal",
+"RightShoulder" : "r_shoulder",
+"RightArm" : "r_upperarm",
+"RightForeArm" : "r_forearm",
+"RightHand" : "r_carpal"
+}
+
 def substitute(subs):
+    if subs in bvh2HAnim:
+        print(f"converting {subs} to {bvh2HAnim[subs]}")
+        subs = bvh2HAnim[subs]
+    else:
+        print(f"{subs} not found")
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
+
+uuid_defs = {}                   # defs
 
 def write_interpolators(obj, name, prefix):  # pass armature object
 
     root_found = False
+    uuid_defs = {}                   # defs
+
+    def name_used(DEF):
+        if DEF in uuid_defs.keys():
+            uuid_defs[DEF] = uuid_defs[DEF] + 1
+            print(f"wi DEF {DEF} used {uuid_defs[DEF]}")
+            return True
+        else:
+            uuid_defs.update({DEF: 1})
+            print(f"wi DEF {DEF} used {uuid_defs[DEF]}")
+            return False
+
 
     def setUSEDEF(prefix, name, node):
         if name is None:
             name = ""
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+        node.name = substitute(name)
+        pname = prefix+substitute(name)
+        if name_used(pname):
+            # create a new empty copy for USE
+            # node = type(node)(USE=pname)
+            if name == "SiteShape":
+                node = type(node)(USE=pname)
+            else:
+                node.USE = pname
+            print(f"{pname} is the value of USE")
         else:
-            node.name = name
-        node.DEF = substitute(prefix+name)
+            node.DEF = pname
+            print(f"{pname} is the value of DEF")
+        return node
 
     def ensure_rot_order(rot_order_str):
         if set(rot_order_str) != {'X', 'Y', 'Z'}:
@@ -231,10 +288,10 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     frame_range = [frame_current, frame_end]
     time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
     clock_name = substitute(name+"_Clock")
-    setUSEDEF(clock_name, None, time_sensor)
+    setUSEDEF("", clock_name, time_sensor)
     activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
     activate_name = substitute(name+"_Close")
-    setUSEDEF(activate_name, None, activate_sensor)
+    setUSEDEF("", activate_name, activate_sensor)
     activate_route = ROUTE(
             fromNode=activate_name,
             fromField="enterTime",
@@ -250,9 +307,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
         # print(f"Creating interpolators for {bone.name}")
-        pbonename = substitute(prefix+bone.name)
+        pbonename = prefix+substitute(bone.name)
         if bone.name == 'humanoid_root':
-            pibonename = substitute(name+"_PI_"+bone.name)
+            pibonename = name+"_PI_"+substitute(bone.name)
             posInterp = PositionInterpolator()
             setUSEDEF(name+"_PI_", bone.name, posInterp)
             positionInterpolators.append(posInterp)
@@ -269,9 +326,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             root_found = True
 
         rotInterp = OrientationInterpolator()
-        setUSEDEF(name+"_OI_", bone.name, rotInterp)
+        setUSEDEF(name+"_OI_", substitute(bone.name), rotInterp)
         orientationInterpolators.append(rotInterp)
-        oibonename = substitute(name+"_OI_"+bone.name)
+        oibonename = name+"_OI_"+substitute(bone.name)
         orientationRoutes.append(ROUTE(
             fromNode=clock_name,
             fromField="fraction_changed",
@@ -357,12 +414,28 @@ def write_interpolators(obj, name, prefix):  # pass armature object
 
 def write_obj_interpolators(obj, matrix, prefix):
 
+    uuid_defs = {}                   # defs
+
+    def name_used(DEF):
+        if DEF in uuid_defs.keys():
+            uuid_defs[DEF] = uuid_defs[DEF] + 1
+            return True
+        else:
+            uuid_defs.update({DEF: 1})
+            return False
+
+
     def setUSEDEF(prefix, name, node):
         if name is None:
             name = ""
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+        node.name = substitute(name)
+        pname = prefix+substitute(name)
+        if name_used(pname):
+            node.USE = pname
         else:
-            node.name = name
-        node.DEF = substitute(prefix+name)
+            node.DEF = pname
 
     name = obj.name
     nodes = []
@@ -381,10 +454,10 @@ def write_obj_interpolators(obj, matrix, prefix):
     frame_range = [frame_current, frame_end]
     time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
     clock_name = substitute(name+"_Clock")
-    setUSEDEF(clock_name, None, time_sensor)
+    setUSEDEF("", clock_name, time_sensor)
     activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
     activate_name = substitute(name+"_Close")
-    setUSEDEF(activate_name, None, activate_sensor)
+    setUSEDEF("", activate_name, activate_sensor)
     activate_route = ROUTE(
             fromNode=activate_name,
             fromField="enterTime",
@@ -396,8 +469,8 @@ def write_obj_interpolators(obj, matrix, prefix):
     positionRoutes = []
     orientationRoutes = []
     # print(f"Creating interpolators for {obj.name}")
-    pobjname = substitute(prefix+obj.name)
-    piobjname = substitute(name+"_PI_"+obj.name)
+    pobjname = prefix+substitute(obj.name)
+    piobjname = name+"_PI_"+substitute(obj.name)
     posInterp = PositionInterpolator()
     setUSEDEF(name+"_PI_", obj.name, posInterp)
     positionInterpolators.append(posInterp)
@@ -413,9 +486,9 @@ def write_obj_interpolators(obj, matrix, prefix):
         toField="translation"))
 
     rotInterp = OrientationInterpolator()
-    setUSEDEF(name+"_OI_", obj.name, rotInterp)
+    setUSEDEF(name+"_OI_", substitute(obj.name), rotInterp)
     orientationInterpolators.append(rotInterp)
-    oiobjname = substitute(name+"_OI_"+obj.name)
+    oiobjname = name+"_OI_"+substitue(obj.name)
     orientationRoutes.append(ROUTE(
         fromNode=clock_name,
         fromField="fraction_changed",

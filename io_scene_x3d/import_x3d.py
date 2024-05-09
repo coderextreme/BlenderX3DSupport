@@ -3818,16 +3818,13 @@ def load_web3d(
                     for shape in all_shapes:
                         if shape:
                             print(f"Skin mesh is found")
-                            if skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
-                                if shape[0] and shape[1]:
-                                    print("Got mesh obj")
-                                    meshobj = shape[1]
-                                    meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
-                                    meshobj.modifiers['ArmatureToMesh'].object = skeleton
-                                else:
-                                    print("No mesh here for armature")
+                            if  shape[0] and shape[1] and shape[2] and skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
+                                print("Got mesh obj")
+                                meshobj = shape[1]
+                                meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
+                                meshobj.modifiers['ArmatureToMesh'].object = skeleton
                             else:
-                                print(f"DEFs match? {skinCoord.getRealNode().getDefName()} == {shape[2].getRealNode().getDefName()}")
+                                print(f"DEFs match? missing shape[:]?  skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName()")
                         else:
                             print(f"no shape {shape} ? all shapes is {all_shapes}")
 

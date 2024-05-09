@@ -30,13 +30,76 @@ from x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
 
+bvh2HAnim = {
+"LeftUpLeg" : "l_thigh",
+"LeftLeg" : "l_calf",
+"LeftFoot" : "l_talus",
+"LeftToe" : "l_tarsal_proximal_phalanx_2",
+"RightUpLeg" : "r_thigh",
+"RightLeg" : "r_calf",
+"RightFoot" : "r_talus",
+"RightToe" : "r_tarsal_proximal_phalanx_2",
+"Hips" : "pelvis",
+"Spine" : "sacrum",
+"Spine1" : "l5",
+"Spine2" : "t12",
+"Neck" : "c7",
+"Head" : "skull",
+"LeftShoulder" : "l_shoulder",
+"LeftArm" : "l_upperarm",
+"LeftForeArm" : "l_forearm",
+"LeftHand" : "l_carpal",
+"RightShoulder" : "r_shoulder",
+"RightArm" : "r_upperarm",
+"RightForeArm" : "r_forearm",
+"RightHand" : "r_carpal"
+}
+
 def substitute(subs):
+    if subs in bvh2HAnim:
+        print(f"converting {subs} to {bvh2HAnim[subs]}")
+        subs = bvh2HAnim[subs]
+    else:
+        print(f"{subs} not found")
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
+
+uuid_defs = {}                   # defs
 
 def write_animation(obj):  # pass armature object
 
-    values = []
     root_found = False
+    values = []
+    uuid_defs = {}                   # defs
+
+    def name_used(DEF):
+        if DEF in uuid_defs.keys():
+            uuid_defs[DEF] = uuid_defs[DEF] + 1
+            print(f"wa DEF {DEF} used {uuid_defs[DEF]}")
+            return True
+        else:
+            uuid_defs.update({DEF: 1})
+            print(f"wa DEF {DEF} used {uuid_defs[DEF]}")
+            return False
+
+#    def setUSEDEF(prefix, name, node):
+#        if name is None:
+#            name = ""
+#        if name.startswith(prefix):
+#            name = name[len(prefix):]
+#        node.name = substitute(name)
+#        pname = prefix+substitute(name)
+#        if name_used(pname):
+#            # create a new empty copy for USE
+#            # node = type(node)(USE=pname)
+#            if name == "SiteShape":
+#                node = type(node)(USE=pname)
+#            else:
+#                node.USE = pname
+#            print(f"{pname} is the value of USE")
+#        else:
+#            node.DEF = pname
+#            print(f"{pname} is the value of DEF")
+#        return node
 
     def ensure_rot_order(rot_order_str):
         if set(rot_order_str) != {'X', 'Y', 'Z'}:
@@ -253,12 +316,12 @@ def write_animation(obj):  # pass armature object
         print_console('INFO', "humanoid_root found in bone data, adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range((numbones + 1) * 3)])
         channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
-        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(subtitute(HANIM_DEF_PREFIX+bone.name) for bone in armature.pose.bones if bone.name != "humanoid_root"))
+        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+substitute(bone.name) for bone in armature.pose.bones if bone.name != "humanoid_root"))
     else:
         print_console('ERROR', "humanoid_root not found in bone data, not adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
         channels=("3 Xrotation Yrotation Zrotation " * (numbones))
-        joints=(" ".join(substitute(HANIM_DEF_PREFIX+bone.name) for bone in armature.pose.bones))
+        joints=(" ".join(HANIM_DEF_PREFIX+substitute(bone.name) for bone in armature.pose.bones))
 
     node = HAnimMotion(
         frameIncrement=1,
