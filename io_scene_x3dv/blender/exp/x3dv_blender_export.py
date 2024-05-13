@@ -656,7 +656,7 @@ def export(context, x3dv_export_settings):
 
         location = matrix.to_translation()[:]
 
-        radius = lamp.distance * math.cos(beamWidth)
+        radius = lamp.cutoff_distance * math.cos(beamWidth)
         lite = SpotLight(DEF=light_id)
         lite.radius = radius
         lite.ambientIntensity = amb_intensity
@@ -783,20 +783,20 @@ def export(context, x3dv_export_settings):
                       setUSEDEF(HANIM_DEF_PREFIX, "SITE_FOR_"+segment_name+"_tip", site)
                       objname=substitute(obj.name)
                       segmentname=substitute(segment_name)
-                      #joint_shape = Shape()
-                      #setUSEDEF("", "JointShape", joint_shape)
+                      joint_shape = Shape()
+                      setUSEDEF("", "JointShape", joint_shape)
                       segment = HAnimSegment(children=[
                             TouchSensor(description=f"joint {objname} segment {segmentname}"),
-                            #Transform(translation=center[:],
-                            #    children=[
-                            #        joint_shape
-                            #    ]),
-                            #Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
-                            #      geometry=LineSet(
-                            #        vertexCount=2,
-                            #        coord=Coordinate(point=[center[:],chicenter[:]]),
-                            #        color=ColorRGBA(USE='SegmentLineColor')
-                            #      )),
+                            Transform(translation=center[:],
+                                children=[
+                                    joint_shape
+                                ]),
+                            Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
+                                  geometry=LineSet(
+                                    vertexCount=2,
+                                    coord=Coordinate(point=[center[:],chicenter[:]]),
+                                    color=ColorRGBA(USE='SegmentLineColor')
+                                  )),
                             site
                         ])
                       setUSEDEF(HANIM_DEF_PREFIX, segment_name, segment)
@@ -2304,35 +2304,36 @@ def export(context, x3dv_export_settings):
                 site_shape
             ])
         )
-        #x3dmodel.Scene.children.append(
-        #    Transform( children=[
-        #        Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
-        #              geometry=LineSet(
-        #                vertexCount=2,
-        #                coord=Coordinate(point=MFVec3f([(0, 0, 0), (0, 0, 0)])),
-        #                color=ColorRGBA(
-        #                    DEF='SegmentLineColor',
-        #                    color=MFColorRGBA([(1.0, 1.0, 1.0, 0.0), (1.0, 1.0, 1.0, 0.0)])
-        #                )
-        #        ))
-        #    ])
-        #)
+        x3dmodel.Scene.children.append(
+            Transform( children=[
+                Shape(appearance=Appearance(lineProperties=LineProperties(linewidthScaleFactor=5)),
+                      geometry=LineSet(
+                        vertexCount=2,
+                        coord=Coordinate(point=MFVec3f([(0, 0, 0), (0, 0, 0)])),
+                        color=ColorRGBA(
+                            DEF='SegmentLineColor',
+                            color=MFColorRGBA([(0.0, 0.0, 1.0, 1.0), (0.0, 1.0, 0.0, 1.0)])
+                        )
+                ))
+            ])
+        )
 
-        #joint_shape = Shape(
-        #            geometry=Sphere(radius=0.06),
-        #            appearance=Appearance(
-        #                DEF="JointAppearance",
-        #                material=Material(
-        #                    diffuseColor = (1, 0.5, 0, 0),
-        #                    transparency = 1
-        #                ))
-        #        )
-        #setUSEDEF("", "JointShape", joint_shape)
-        #x3dmodel.Scene.children.append(
-        #   Transform( children=[
-        #       joint_shape
-        #   ])
-        #
+        joint_shape = Shape(
+                    geometry=Sphere(radius=0.06),
+                    appearance=Appearance(
+                        DEF="JointAppearance",
+                        material=Material(
+                            diffuseColor = (1, 0.5, 0),
+                            transparency = 1
+                        ))
+                )
+        setUSEDEF("", "JointShape", joint_shape)
+        x3dmodel.Scene.children.append(
+           Transform( children=[
+               joint_shape
+           ])
+        )
+        
 
         for obj_main, obj_main_children in objects_hierarchy:
             [ x3dnodelist, after ] = b2x_object(None, obj_main, obj_main_children, x3dmodel.Scene, image_textures)

@@ -2779,7 +2779,8 @@ def appearance_CreateDefaultMaterial():
     bpymat_wrap = node_shader_utils.PrincipledBSDFWrapper(bpymat, is_readonly=False)
 
     bpymat_wrap.roughness = 0.8
-    bpymat_wrap.base_color = (0.8, 0.8, 0.8, 1.0)
+    # TODO think about adding alpha
+    bpymat_wrap.base_color = (0.8, 0.8, 0.8)
     #bpymat.mirror_color = (0, 0, 0)
     #bpymat.emit = 0
 
@@ -3161,6 +3162,7 @@ def importShape(bpycollection, node, ancestry, global_matrix):
         bpyob.matrix_world = getFinalMatrix(node, None, ancestry, global_matrix)
         bpycollection.objects.link(bpyob)
         bpyob.select_set(True)
+        # bpy.ops.object.mode_set(mode='OBJECT')
         return
 
     vrmlname = node.getDefName()
@@ -3243,8 +3245,8 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
         if not first_joint_name:
             first_joint_name = child.getFieldAsString('name', None, ancestry)
         joint_center = child.getFieldAsFloatTuple('center', None, ancestry)
-        if joint_center is None:
-            joint_center = (0, 0, 0)
+        #if joint_center is None:
+        joint_center = (0, 0, 0)  # may delete joint at 0 0 0 
         print(f"Joint {first_joint_name} {joint_center}")
         importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=joint_center[:])
 
@@ -3549,9 +3551,10 @@ def translateCoordinateInterpolator(node, action, ancestry):
         for kf in fcu.keyframe_points:
             kf.interpolation = 'LINEAR'
 
-def translateOrientationInterpolator(node, action, ancestry):
+def translateOrientationInterpolator(node, action, ancestry, to_node):
     key = node.getFieldAsArray('key', 0, ancestry)
     keyValue = node.getFieldAsArray('keyValue', 4, ancestry)
+    node.rotation_mode = 'XYZ'
 
     rot_x = action_fcurve_ensure(action, "rotation_euler", 0)
     rot_y = action_fcurve_ensure(action, "rotation_euler", 1)
@@ -3637,7 +3640,7 @@ def translateTimeSensor(node, action, ancestry):
         time_cu.extend = Blender.IpoCurve.ExtendTypes.CYCLIC  # or - EXTRAP, CYCLIC_EXTRAP, CONST,
 
 
-def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton):
+def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton, hasMesh):
 
     routeIpoDict = node.getRouteIpoDict()
 
@@ -3663,11 +3666,12 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skelet
             action = getIpo(to_id)
             set_data_from_node = defDict[from_id]
             if skeleton and skeleton.pose.bones.get(to_id):
-                # print(f"Creating animation for joint {to_id}")
+                print(f"Creating animation for joint {to_id}")
                 translateBoneOrientationInterpolator(set_data_from_node, action, ancestry, to_id, skeleton)
-            else:
+            if not hasMesh:
                 print(f"Creating orientation animation for {to_id}")
-                translateOrientationInterpolator(set_data_from_node, action, ancestry)
+                to_node = defDict[to_id]
+                translateOrientationInterpolator(set_data_from_node, action, ancestry, to_node)
 
         if to_type == 'set_scale':
             action = getIpo(to_id)
@@ -3684,7 +3688,7 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skelet
         time_node = defDict[to_id]
         translateTimeSensor(time_node, action, ancestry)
 
-def importRoute(node, ancestry, skeleton):
+def importRoute(node, ancestry, skeleton=None, hasMesh=None):
     """
     Animation route only at the moment
     """
@@ -3712,7 +3716,7 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
         to_type = node.getFieldAsString("toField", None, ancestry)
         if from_id and from_type and to_id and to_type:
             # print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
-            importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton)
+            importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton, hasMesh)
     else:
         for field in node.fields:
             # print(f"return field {field}")
@@ -3721,7 +3725,7 @@ ROUTE champFly001.bindTime TO vpTs.set_startTime
                     from_id, from_type = field[1].split('.')
                     to_id, to_type = field[3].split('.')
                     # print(f"ROUTE from {from_id}.{from_type} to {to_id}.{to_type}")
-                    importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton)
+                    importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skeleton, hasMesh)
 
                 except:
                     print("Warning, invalid ROUTE", field[1], "to", field[3])
@@ -3775,15 +3779,19 @@ def load_web3d(
     all_nodes = root_node.getSerialized([], [])
 
     all_shapes = []
-    skinCoords = []
     skeleton = None
+    meshobj = None
+    shape = None
 
     for node, ancestry in all_nodes:
         spec = node.getSpec()
 
         if spec.endswith('Shape'):
             shape = importShape(bpycollection, node, ancestry, global_matrix)
-            all_shapes.append(shape)
+            if shape:
+                if shape[1]:
+                    bpy.context.view_layer.objects.active = shape[1]
+                all_shapes.append(shape)
 
     for node, ancestry in all_nodes:
         #if 'castle.wrl' not in node.getFilename():
@@ -3808,7 +3816,6 @@ def load_web3d(
             joints = []
             segments = []
             jointSkin = {}
-            meshobj = None
             skeleton = importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin)
             # skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
             skinCoord = node.getChildBySpec('Coordinate')
@@ -3835,7 +3842,9 @@ def load_web3d(
         
         
             print(f"mesh is {meshobj}")
+            #bpy.ops.object.mode_set(mode="EDIT")
             bpy.ops.object.mode_set(mode="OBJECT")
+            #bmesh.from_edit_mesh(meshobj.data)
             imported = []
             print(f"Number of segments {len(segments)}")
             for segment in segments:
@@ -3865,8 +3874,11 @@ def load_web3d(
     if skeleton:
         bpy.ops.object.mode_set(mode='POSE')
     for node, ancestry in all_nodes:
-        importRoute(node, ancestry, skeleton)
+        importRoute(node, ancestry, skeleton, meshobj)
     bpy.context.scene.frame_set(0)
+
+    if not skeleton and shape[1]:
+        bpy.context.view_layer.objects.active = shape[1]
 
     bpy.ops.object.mode_set(mode='OBJECT')
     for node, ancestry in all_nodes:
@@ -3946,6 +3958,9 @@ def load_web3d(
                             if isinstance(parent, bpy.types.EditBone):
                                 print(f"Parent is EditBone")
                                 #c.parent = parent.bone
+                                c.parent = skeleton # Armature object
+                                # c.parent_bone = parent.name # Bone name
+                                # c.parent_type = 'BONE'
                             print(f"Can't handle parent-child relationship, child {c} type {type(c)}, parent {parent} type {type(parent)}")
                     else:
                         print("Not a child")
