@@ -546,7 +546,7 @@ def export(file,
 
 
 
-    def writeHAnim_begin(ident, obj, matrix, def_id, hanim_node_str, segment_name, skinCoordIndex, skinCoordWeight):
+    def writeHAnim_begin(ident, obj, matrix, def_id, hanim_node_str, segment_name=None, skinCoordIndex=None, skinCoordWeight=None):
         ident_step = ident + (' ' * (-len(ident) + \
         fw('%s<%s ' % (ident, hanim_node_str))))
         if def_id is not None:
@@ -617,6 +617,8 @@ def export(file,
             joint_matrix_world_invert = joint_matrix_world.inverted(matrix_fallback)
 
 
+            skinCoordIndex = []
+            skinCoordWeight = []
             for mesh in bpy.data.objects:
                 if mesh.type == 'MESH':
                     if mesh.parent == armature:
@@ -633,7 +635,9 @@ def export(file,
         
             joint_id = quoteattr(unique_name(joint, joint.name, uuid_cache_skeleton, clean_func=clean_def, sep="_"))
             if not joint.name.endswith("_end"):  # This is actually a site
-                ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint", segment_lookup[joint.name], skinCoordIndex, skinCoordWeight)
+                if not joint.name in segment_lookup:
+                    segment_lookup[joint.name] = "NEW_SEGMENT"
+                ident = writeHAnim_begin(ident, joint, matrix, joint_id, "HAnimJoint", segment_name=segment_lookup[joint.name], skinCoordIndex=skinCoordIndex, skinCoordWeight=skinCoordWeight)
 
             print(f"Info: Exporting joint {joint.name}")
             for joint_child in joint_lookup[joint.name]['joint_children']:
