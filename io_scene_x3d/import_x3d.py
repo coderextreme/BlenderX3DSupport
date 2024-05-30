@@ -2781,7 +2781,8 @@ def appearance_CreateDefaultMaterial():
 
     bpymat_wrap.roughness = 0.8
     # TODO think about adding alpha
-    bpymat_wrap.base_color = (0.8, 0.8, 0.8, 1.0)
+    # bpymat_wrap.base_color = (0.8, 0.8, 0.8, 1.0)
+    bpymat_wrap.base_color = (0.8, 0.8, 0.8)
     #bpymat.mirror_color = (0, 0, 0)
     #bpymat.emit = 0
 
@@ -3216,6 +3217,64 @@ def importShape(bpycollection, node, ancestry, global_matrix):
     
     return [ geom, bpypo, coord ]
 
+def importHAnimDisplacer(node, ancestry, meshobj, displacers):
+    displacements = node.getFieldAsArray('displacements', 0, ancestry)
+    coordIndex = node.getFieldAsArray('coordIndex', 0, ancestry)
+    weight = node.getFieldAsFloat('weight', 0, ancestry)
+
+    obj = meshobj
+
+    # now set up shape key in Blender
+    mesh=obj.data
+    sk_basis = obj.shape_key_add(name='Basis',from_mix=False)
+    sk_basis.interpolation = 'KEY_LINEAR'
+    # must set relative to false here
+    obj.data.shape_keys.use_relative = False
+
+    # create new shape key
+    displacer_name = node.getRealNode().getDefName()
+    displacer_data_path = 'key_blocks["'+displacer_name+'"].value'
+    displacer_shape_key = obj.shape_key_add(name=displacer_name,from_mix=False)
+
+    index = obj.data.shape_keys.key_blocks.find(displacer_name)
+    obj.active_shape_key_index = index
+
+    displacer_shape_key.interpolation = 'KEY_LINEAR'
+    displacer_shape_key.slider_min = 0
+    displacer_shape_key.slider_max = 1
+    displacer_key_block = obj.data.shape_keys.key_blocks[displacer_name]
+
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    bm=bmesh.new()
+    bm=bmesh.from_edit_mesh(mesh)
+    bm.faces.ensure_lookup_table()
+
+    vertex_group = obj.vertex_groups.get(displacer_name)
+    if vertex_group is None:
+        vertex_group = obj.vertex_groups.new(name=displacer_name)
+    displacer_shape_key.vertex_group = displacer_name
+
+    #for face in bm.faces:
+    #    print('this is the face: ',face.index)
+    #    for vert in face.verts:
+    #        for index in coordIndex:
+    #            if vert.index == index:
+    #                #vert.co.x=vert.co.x+displacements[index*3+0]
+    #                #vert.co.y=vert.co.y+displacements[index*3+1]
+    #                #vert.co.z=vert.co.z+displacements[index*3+2]
+    bmesh.update_edit_mesh(mesh)
+    bm.free()
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    vertex_group.add(coordIndex, weight, 'REPLACE')
+
+    # Switching to relative must be after
+    # switching back to Object mode:
+    obj.data.shape_keys.use_relative = True
+    displacers.update({ displacer_name : { 'shape_key' : displacer_shape_key, 'data_path' : displacer_data_path, 'key_block' : displacer_key_block, 'obj' : obj } });
+
 def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin):
     vrmlname = node.getDefName()
     # print(vrmlname)
@@ -3246,8 +3305,8 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
         if not first_joint_name:
             first_joint_name = child.getFieldAsString('name', None, ancestry)
         joint_center = child.getFieldAsFloatTuple('center', None, ancestry)
-        #if joint_center is None:
-        joint_center = (0, 0, 0)  # may delete joint at 0 0 0 
+        if joint_center is None:
+           joint_center = (0, 0, 0)  # may delete joint at 0 0 0 
         print(f"Joint {first_joint_name} {joint_center}")
         importHAnimJoint(joints, segments, child, ancestry, first_joint_name, parent_center=joint_center[:])
 
@@ -3262,7 +3321,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
             # bpy.ops.armature.bone_primitive_add(name=joint_name)
             new_joint = armature_data.edit_bones.new(joint_name)
             # new_joint = skeleton.data.edit_bones[joint_name]
-            #print(f"Created {joint_name} {new_joint}")
+            print(f"Created {joint_name} {new_joint}")
             child.blendData = child.blendObject = new_joint
             matrix_world_inv = skeleton.matrix_world.inverted()
             new_joint.head = joint_end
@@ -3279,16 +3338,16 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
             #else:
             #    print(f"There's no pose bone associated with {joint_name}")
             if skinCoordWeight and skinCoordIndex:
-                print(f"Found skin weights for {joint_name}")
+                # print(f"Found skin weights for {joint_name}")
                 jointSkin[joint_name] = {
                             'skinCoordWeight' : skinCoordWeight,
                             'skinCoordIndex' : skinCoordIndex
                             }
                 #print(f"Adding {joint_name} {len(jointSkin[joint_name]['skinCoordIndex'])} indexes, {len(jointSkin[joint_name]['skinCoordWeight'])} weights")
-        bpy.ops.object.mode_set(mode="OBJECT")
-        for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
-            object_joint = skeleton.data.bones[joint_name]
-            # print(f"New Joint is name {object_joint.name} object {object_joint}")
+        # bpy.ops.object.mode_set(mode="OBJECT")
+        #for joint_name, joint_start, joint_end, skinCoordWeight, skinCoordIndex in joints:
+        #    object_joint = skeleton.data.edit_bones[joint_name]
+        #    # print(f"New Joint is name {object_joint.name} object {object_joint}")
         bpy.ops.object.mode_set(mode="EDIT")
 
         for segment in segments:
@@ -3617,6 +3676,30 @@ def translateBoneOrientationInterpolator(node, action, ancestry, to_id=None, ske
             pose_bone.keyframe_insert(data_path="rotation_axis_angle", frame=time * PREF_TIME_MULT)
 
 
+def translateShapeKeyPositionInterpolator(node, action, ancestry, displacers, to_id):
+    key = node.getFieldAsArray('key', 0, ancestry)
+    keyValue = node.getFieldAsArray('keyValue', 0, ancestry)
+
+    obj = displacers[to_id].obj
+    index = obj.data.shape_keys.key_blocks.find(to_id)
+    obj.active_shape_key_index = index
+    shape_key = displacers[to_id].shape_key
+    data_path = displacers[to_id].data_path
+    key_block = displacers[to_id].key_block
+
+    scale_weight = action_fcurve_ensure(action, data_path, 0)
+
+    for i, time in enumerate(key):
+        try:
+            obj.data.shape_keys.key_blocks[to_id].value = keyValue[i]
+        except:
+            continue
+        shape_key.keyframe_insert(data_path=data_path, frame=time * PREF_TIME_MULT)
+
+    for fcu in (scale_weight):
+        for kf in fcu.keyframe_points:
+            kf.interpolation = 'KEY_LINEAR'
+
 # Untested!
 def translateScalarInterpolator(node, action, ancestry):
     key = node.getFieldAsArray('key', 0, ancestry)
@@ -3688,6 +3771,12 @@ def importRouteFromTo(node, from_id, from_type, to_id, to_type, ancestry, skelet
             set_data_from_node = defDict[from_id]
             print(f"Trying to create a position interpolator for joint {to_id} (may need something special?)")
             translatePositionInterpolator(set_data_from_node, action, ancestry)
+
+        if to_type in ('set_point', 'point'):  # set translation may need some matrix multiplication
+            action = getIpo(to_id)
+            set_data_from_node = defDict[from_id]
+            print(f"Trying to create a shape key position interpolator")
+            translateShapeKeyPositionInterpolator(set_data_from_node, action, ancestry, displacers, to_id)
 
         if to_type in {'set_orientation', 'rotation', "set_rotation"}:
             action = getIpo(to_id)
@@ -3810,6 +3899,7 @@ def load_web3d(
     meshobj = None
     shape = None
     site = None
+    displacers = {}
 
     for node, ancestry in all_nodes:
         spec = node.getSpec()
@@ -3892,13 +3982,20 @@ def load_web3d(
         elif spec in ('HAnimSegment'):
             child_segment_name = node.getDefName()
             importTransform(bpycollection, node, ancestry, global_matrix)
+        elif spec in ('HAnimDisplacer'):
+            if meshobj:
+                importHAnimDisplacer(node, ancestry, meshobj, displacers)
         elif spec in ('HAnimJoint'):
             parent_joint_name = node.getDefName()
-        elif spec in ('HAnimSite'):
             importTransform(bpycollection, node, ancestry, global_matrix)
+        elif spec in ('HAnimSite'):
             site_name = node.getRealNode().getDefName()
-            if not site_name:
-                print(f"Can't finds site {site_name}'s")
+            importTransform(bpycollection, node, ancestry, global_matrix)
+            if skinCoord and meshobj and skeleton:
+                print(f"Doing skining, not segment geometry")
+                # connect_object_to_a_bone(meshobj, skeleton, parent_joint_name, site_name)
+            elif not site_name:
+                print(f"Can't find site {site_name}'s")
             else:
                 print(f"Found site {site_name}")
                 bpy.ops.object.mode_set(mode='EDIT')
@@ -3909,7 +4006,7 @@ def load_web3d(
                             
                             if skeleton:
                                 print(f"GOO Found skeleton")
-                                connect_mesh_to_a_bone(meshobj, skeleton, parent_joint_name, site_name)
+                                connect_object_to_a_bone(meshobj, skeleton, parent_joint_name, site_name)
                                 print(f"GOO Done connecting mesh to skeleton")
                             else:
                                 # print(f"GOO Didn't find skeleton")
@@ -3917,15 +4014,15 @@ def load_web3d(
 
                             print(f"GOO Connected {meshobj.name} to site {site_name}")
                         elif shape[3].getRealNode().getDefName():
-                            # print(f"{site_name} did not match parent {shape[3].getDefName()}")
+                            print(f"{site_name} did not match parent {shape[3].getRealNode().getDefName()}")
                             pass
                         else:
                             print(f"GOO shape 3 has no DEF for site {site_name}")
                     elif shape[2]:
-                        # print(f'GOO {shape[2].getRealNode().getDefName()} is not a good shape')
+                        print(f'GOO {shape[2].getRealNode().getDefName()} is not a good shape')
                         pass
                     else:
-                        # print(f'not a good shape')
+                        print(f'not a good shape')
                         pass
                 bpy.ops.object.mode_set(mode='OBJECT')
         elif spec in ('Transform'):
@@ -3951,39 +4048,39 @@ def load_web3d(
 
     bpy.ops.object.mode_set(mode='OBJECT')
     for node, ancestry in all_nodes:
-        if node.isRoot():
-            # we know that all nodes referenced from will be in
-            # routeIpoDict so no need to run node.getDefDict() for every node.
-            routeIpoDict = node.getRouteIpoDict()
-            defDict = node.getDefDict()
+        # if node.isRoot():
+        # we know that all nodes referenced from will be in
+        # routeIpoDict so no need to run node.getDefDict() for every node.
+        routeIpoDict = node.getRouteIpoDict()
+        defDict = node.getDefDict()
 
-            for key, action in routeIpoDict.items():
+        for key, action in routeIpoDict.items():
 
-                # Assign anim curves
-                node = defDict[key]
-                # print(f"key {key} action {action} node {node}")
-                bone = None
-                if skeleton:
-                    if skeleton and key in skeleton.pose.bones:
-                        bone = skeleton.pose.bones[key]
-                    else:
-                        print(f"There's no pose bone associated with key {key}, probably using a regular interpolator")
+            # Assign anim curves
+            node = defDict[key]
+            # print(f"key {key} action {action} node {node}")
+            bone = None
+            if skeleton:
+                if skeleton and key in skeleton.pose.bones:
+                    bone = skeleton.pose.bones[key]
                 else:
-                        print(f"There's no skeleton")
-                if node.blendData is None:  # Add an object if we need one for animation
-                    node.blendData = node.blendObject = bpy.data.objects.new(key, None)
-                    bpycollection.objects.link(node.blendObject)
-                    node.blendObject.select_set(True)
+                    print(f"There's no pose bone associated with key {key}, probably using a regular interpolator")
+            else:
+                    print(f"There's no skeleton")
+            if node.blendData is None:  # Add an object if we need one for animation
+                node.blendData = node.blendObject = bpy.data.objects.new(key, None)
+                bpycollection.objects.link(node.blendObject)
+                node.blendObject.select_set(True)
 
-                if hasattr(node.blendData, "animation_data"):
-                    if not node.blendData.animation_data:
-                        node.blendData.animation_data_create()
-                    if not node.blendData.animation_data.action:
-                        node.blendData.animation_data.action = action
-                    # to disable NLA, comment out these 3 lines
-                    track = node.blendData.animation_data.nla_tracks.new()
-                    track.name = "NLATRACK "+key
-                    node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
+            if hasattr(node.blendData, "animation_data"):
+                if not node.blendData.animation_data:
+                    node.blendData.animation_data_create()
+                if not node.blendData.animation_data.action:
+                    node.blendData.animation_data.action = action
+                # to disable NLA, comment out these 3 lines
+                #track = node.blendData.animation_data.nla_tracks.new()
+                #track.name = "NLATRACK "+key
+                #node.blendData.animation_data.nla_tracks[track.name].strips.new(name=key, start=0, action=bpy.data.actions[key])
     # Add in hierarchy
     if PREF_FLAT is False:
         child_dict = {}
@@ -4015,6 +4112,7 @@ def load_web3d(
                 for c in children:
                     if c:
                         if type(c) == type(parent):
+                            print(f"Working on: child {c} type {type(c)}, parent {parent} type {type(parent)}")
                             c.parent = parent
                             # c.parent_type = 'KEEP_OFFSET'
                         else:
@@ -4040,7 +4138,9 @@ def load_web3d(
                 print("Children or parent may be None")
 
         # update deps
+        print("All done with parenting")
         bpycontext.view_layer.update()
+        print("Done with updating")
         del child_dict
 
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -4129,22 +4229,70 @@ def load_web3d(
 #
 #    print(f"Successfully parented '{mesh_obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
 
-def connect_mesh_to_a_bone(mesh_obj, armature_obj, bone_name, site_name=None):
+#def connect_mesh_to_a_bone(mesh_obj, armature_obj, bone_name, site_name=None):
+#    """
+#    Connects a mesh object to a specific bone in an armature.
+#
+#    Args:
+#        mesh_obj (bpy.types.Object): The mesh object to parent.
+#        armature_obj (bpy.types.Object): The armature object containing the bone.
+#        bone_name (str): The name of the bone to parent to.
+#        site_name (str, optional): The name of the site object to parent the mesh to.
+#            If provided, the mesh will be parented to the site object, which is then
+#            parented to the bone.
+#    """
+#
+#    # Check if objects are valid
+#    if not mesh_obj or not armature_obj:
+#        print(f"Error: Missing objects. Mesh: {mesh_obj}, Armature: {armature_obj}")
+#        return
+#
+#    # Check if bone exists in the armature
+#    if bone_name not in armature_obj.data.bones:
+#        print(f"Error: Bone '{bone_name}' not found in armature '{armature_obj.name}'")
+#        return
+#
+#    # Select the bone
+#    bone_obj = armature_obj.data.bones[bone_name]
+#    bone_obj.select = True
+#
+#    if site_name:
+#        # Parent the mesh object to the site object
+#        site_obj = bpy.data.objects[site_name]
+#        mesh_obj.parent = site_obj
+#        mesh_obj.matrix_parent_inverse = armature_obj.matrix_world.inverted()
+#
+#        # Parent the site object to the bone
+#        site_obj.parent = armature_obj
+#        site_obj.parent_bone = bone_name
+#        site_obj.parent_type = 'BONE'
+#    else:
+#        # Parent the mesh object directly to the bone
+#        mesh_obj.parent = armature_obj
+#        mesh_obj.parent_bone = bone_name
+#        mesh_obj.parent_type = 'BONE'
+#
+#    print(f"Successfully parented '{mesh_obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
+
+import bmesh
+
+def connect_object_to_a_bone(obj, armature_obj, bone_name, site_name=None):
     """
-    Connects a mesh object to a specific bone in an armature.
+    Connects an object (mesh or curve) to a specific bone in an armature.
+    Ensures proper setup for deformation on mesh objects.
 
     Args:
-        mesh_obj (bpy.types.Object): The mesh object to parent.
+        obj (bpy.types.Object): The object (mesh or curve) to parent.
         armature_obj (bpy.types.Object): The armature object containing the bone.
         bone_name (str): The name of the bone to parent to.
-        site_name (str, optional): The name of the site object to parent the mesh to.
-            If provided, the mesh will be parented to the site object, which is then
+        site_name (str, optional): The name of the site object to parent the object to.
+            If provided, the object will be parented to the site object, which is then
             parented to the bone.
     """
 
     # Check if objects are valid
-    if not mesh_obj or not armature_obj:
-        print(f"Error: Missing objects. Mesh: {mesh_obj}, Armature: {armature_obj}")
+    if not obj or not armature_obj:
+        print(f"Error: Missing objects. Object: {obj}, Armature: {armature_obj}")
         return
 
     # Check if bone exists in the armature
@@ -4156,23 +4304,51 @@ def connect_mesh_to_a_bone(mesh_obj, armature_obj, bone_name, site_name=None):
     bone_obj = armature_obj.data.bones[bone_name]
     bone_obj.select = True
 
-    if site_name:
-        # Parent the mesh object to the site object
-        site_obj = bpy.data.objects[site_name]
-        mesh_obj.parent = site_obj
-        # mesh_obj.matrix_parent_inverse = armature_obj.matrix_world.inverted()
+    # If the object is a mesh, set up the Armature modifier and weight painting
+    if obj.type == 'MESH':
+        # Add an Armature modifier to the mesh object if it doesn't have one
+        armature_mod = obj.modifiers.get("Armature")
+        if armature_mod is None:
+            armature_mod = obj.modifiers.new('Armature', 'ARMATURE')
+            armature_mod.object = armature_obj
 
-        # Parent the site object to the bone
-        site_obj.parent = armature_obj
-        site_obj.parent_bone = bone_name
-        site_obj.parent_type = 'BONE'
-    else:
-        # Parent the mesh object directly to the bone
-        mesh_obj.parent = armature_obj
-        mesh_obj.parent_bone = bone_name
-        mesh_obj.parent_type = 'BONE'
+        # Ensure the mesh object has a vertex group for the bone
+        vertex_group_name = bone_name
+        vertex_group = obj.vertex_groups.get(vertex_group_name)
+        if vertex_group is None:
+            vertex_group = obj.vertex_groups.new(name=vertex_group_name)
 
-    print(f"Successfully parented '{mesh_obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
+        # Set the Armature modifier's vertex group
+        armature_mod.vertex_group = vertex_group_name
+
+        # Create a bmesh and assign weights to the vertex group
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+        dvert_lay = bm.verts.layers.deform.verify()
+        for vert in bm.verts:
+            dvert = vert[dvert_lay]
+            # Use the correct method for setting weight:
+            dvert[vertex_group.index] = 1.0  # Assign a weight of 1.0 to the vertex group
+        bm.to_mesh(obj.data)
+        bm.free()
+
+        # Set up Subsurf modifier if needed
+        if not any(mod.type == 'SUBSURF' for mod in obj.modifiers):
+            subsurf_mod = obj.modifiers.new('Subsurf', 'SUBSURF')
+            subsurf_mod.levels = 2
+
+    # Parent the object directly to the bone
+    obj.parent = armature_obj
+    obj.parent_bone = bone_name
+    obj.parent_type = 'BONE'
+
+#    if site_name:
+#        # Parent the site object to the mesh object
+#        site_obj = bpy.data.objects[site_name]
+#        site_obj.parent = obj
+
+    print(f"Successfully parented '{obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
 
 def load_with_profiler(
         context,
