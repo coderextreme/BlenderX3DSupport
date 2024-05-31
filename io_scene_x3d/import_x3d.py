@@ -28,6 +28,7 @@ from math import sin, cos, pi
 from itertools import chain
 import mathutils
 import json
+import bmesh
 
 texture_cache = {}
 material_cache = {}
@@ -2729,7 +2730,7 @@ def appearance_CreateMaterial(vrmlname, mat, ancestry, is_vcol):
     # Given an X3D material, creates a Blender material.
     # texture is applied later, in appearance_Create().
     # All values between 0.0 and 1.0, defaults from VRML docs.
-    mat_name = mat.getDefName()
+    mat_name = mat.getRealNode().getDefName()
     bpymat = bpy.data.materials.new(mat_name if mat_name else vrmlname)
     bpymat_wrap = node_shader_utils.PrincipledBSDFWrapper(bpymat, is_readonly=False)
 
@@ -3167,7 +3168,7 @@ def importShape(bpycollection, node, ancestry, global_matrix):
         # bpy.ops.object.mode_set(mode='OBJECT')
         return
 
-    vrmlname = node.getDefName()
+    vrmlname = node.getRealNode().getDefName()
     if not vrmlname:
         vrmlname = 'Shape'
 
@@ -3276,13 +3277,19 @@ def importHAnimDisplacer(node, ancestry, meshobj, displacers):
     displacers.update({ displacer_name : { 'shape_key' : displacer_shape_key, 'data_path' : displacer_data_path, 'key_block' : displacer_key_block, 'obj' : obj } });
 
 def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin):
-    vrmlname = node.getDefName()
+    vrmlname = node.getRealNode().getDefName()
     # print(vrmlname)
-    if not vrmlname:
+    prefix = ''
+    if vrmlname:
+        fus = vrmlname.find('_') 
+        if fus > 0:
+            prefix = vrmlname[:fus+1]
+    else:
         vrmlname = 'HAnimHumanoid'
 
+
     # Create armature and object
-    armature_data = bpy.data.armatures.new("humanoid_root")
+    armature_data = bpy.data.armatures.new(prefix+"humanoid_root")
     skeleton = bpy.data.objects.new(vrmlname, armature_data)
 
     # Link object to collection and make it active
@@ -3301,7 +3308,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
     child = node.getChildBySpec('HAnimJoint') # 'HAnimJoint'
     if child:
         # first_joint_name = child.getFieldAsString('name', None, ancestry)
-        first_joint_name = child.getDefName()
+        first_joint_name = child.getRealNode().getDefName()
         if not first_joint_name:
             first_joint_name = child.getFieldAsString('name', None, ancestry)
         joint_center = child.getFieldAsFloatTuple('center', None, ancestry)
@@ -3374,7 +3381,7 @@ def importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, se
 
 def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, parent_center=[0, 0, 0]):
     for child in children:
-        child_bone_name = child.getDefName()
+        child_bone_name = child.getRealNode().getDefName()
         if not child_bone_name:
             child_bone_name = child.getFieldAsString('name', None, ancestry)
         if not child_bone_name:
@@ -3385,7 +3392,7 @@ def importHAnimJoints(joints, segments, children, ancestry, parent_bone_name, pa
 
 def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, parent_center=[0, 0, 0]):
     if child:
-        child_bone_name = child.getDefName()
+        child_bone_name = child.getRealNode().getDefName()
         if not child_bone_name:
             child_bone_name = child.getFieldAsString('name', None, ancestry)
         if not child_bone_name:
@@ -3418,7 +3425,7 @@ def importHAnimJoint(joints, segments, child, ancestry, parent_bone_name=None, p
 
 
 def importLamp_PointLight(node, ancestry):
-    vrmlname = node.getDefName()
+    vrmlname = node.getRealNode().getDefName()
     if not vrmlname:
         vrmlname = 'PointLight'
 
@@ -3441,7 +3448,7 @@ def importLamp_PointLight(node, ancestry):
 
 
 def importLamp_DirectionalLight(node, ancestry):
-    vrmlname = node.getDefName()
+    vrmlname = node.getRealNode().getDefName()
     if not vrmlname:
         vrmlname = 'DirectLight'
 
@@ -3464,7 +3471,7 @@ def importLamp_DirectionalLight(node, ancestry):
 
 
 def importLamp_SpotLight(node, ancestry):
-    vrmlname = node.getDefName()
+    vrmlname = node.getRealNode().getDefName()
     if not vrmlname:
         vrmlname = 'SpotLight'
 
@@ -3522,7 +3529,7 @@ def importLamp(bpycollection, node, spec, ancestry, global_matrix):
 
 
 def importViewpoint(bpycollection, node, ancestry, global_matrix):
-    name = node.getDefName()
+    name = node.getRealNode().getDefName()
     if not name:
         name = 'Viewpoint'
 
@@ -3545,7 +3552,7 @@ def importViewpoint(bpycollection, node, ancestry, global_matrix):
 
 
 def importTransform(bpycollection, node, ancestry, global_matrix):
-    name = node.getDefName()
+    name = node.getRealNode().getDefName()
     if not name:
         name = 'Transform'
 
@@ -3559,8 +3566,10 @@ def importTransform(bpycollection, node, ancestry, global_matrix):
     bpyob.empty_display_type = 'PLAIN_AXES'
     bpyob.empty_display_size = 0.2
 
+    return bpyob
+
 def importHAnimSegment(bpycollection, node, ancestry, global_matrix):
-    name = node.getDefName()
+    name = node.getRealNode().getDefName()
     if not name:
         name = 'Transform'
 
@@ -3900,6 +3909,11 @@ def load_web3d(
     shape = None
     site = None
     displacers = {}
+    skinCoord = None
+    hAnimJoint = None
+    hAnimSegment = None
+    hAnimSite = None
+    group = None
 
     for node, ancestry in all_nodes:
         spec = node.getSpec()
@@ -3947,7 +3961,7 @@ def load_web3d(
                     for shape in all_shapes:
                         if shape:
                             print(f"Skin mesh is found")
-                            if  shape[0] and shape[1] and shape[2] and skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
+                            if shape[0] and shape[1] and shape[2] and skinCoord.getRealNode().getDefName() == shape[2].getRealNode().getDefName():
                                 print("Got mesh obj")
                                 meshobj = shape[1]
                                 meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
@@ -3980,51 +3994,27 @@ def load_web3d(
                     imported.append(parent_joint)
         
         elif spec in ('HAnimSegment'):
-            child_segment_name = node.getDefName()
-            importTransform(bpycollection, node, ancestry, global_matrix)
+            child_segment_name = node.getRealNode().getDefName()
+            hAnimSegment = importTransform(bpycollection, node, ancestry, global_matrix)
+            # hAnimSegment.parent = hAnimJoint
+            attachMesh(all_shapes, child_segment_name, hAnimSegment, skeleton)  # mesh is in all_shapes
         elif spec in ('HAnimDisplacer'):
             if meshobj:
                 importHAnimDisplacer(node, ancestry, meshobj, displacers)
         elif spec in ('HAnimJoint'):
-            parent_joint_name = node.getDefName()
-            importTransform(bpycollection, node, ancestry, global_matrix)
+            parent_joint_name = node.getRealNode().getDefName()
+            hAnimJoint = importTransform(bpycollection, node, ancestry, global_matrix)
+        elif spec in ('Group'):
+            group_name = node.getRealNode().getDefName()
+            group = importTransform(bpycollection, node, ancestry, global_matrix)
         elif spec in ('HAnimSite'):
             site_name = node.getRealNode().getDefName()
-            importTransform(bpycollection, node, ancestry, global_matrix)
-            if skinCoord and meshobj and skeleton:
-                print(f"Doing skining, not segment geometry")
-                # connect_object_to_a_bone(meshobj, skeleton, parent_joint_name, site_name)
-            elif not site_name:
-                print(f"Can't find site {site_name}'s")
-            else:
-                print(f"Found site {site_name}")
-                bpy.ops.object.mode_set(mode='EDIT')
-                for shape in all_shapes:
-                    if shape and shape[0] and shape[1] and shape[2] and shape[3]:
-                        if shape[3].getRealNode().getDefName() and site_name == shape[3].getRealNode().getDefName():  # shape[3] is shape's parent node
-                            meshobj = shape[1]
-                            
-                            if skeleton:
-                                print(f"GOO Found skeleton")
-                                connect_object_to_a_bone(meshobj, skeleton, parent_joint_name, site_name)
-                                print(f"GOO Done connecting mesh to skeleton")
-                            else:
-                                # print(f"GOO Didn't find skeleton")
-                                pass
-
-                            print(f"GOO Connected {meshobj.name} to site {site_name}")
-                        elif shape[3].getRealNode().getDefName():
-                            print(f"{site_name} did not match parent {shape[3].getRealNode().getDefName()}")
-                            pass
-                        else:
-                            print(f"GOO shape 3 has no DEF for site {site_name}")
-                    elif shape[2]:
-                        print(f'GOO {shape[2].getRealNode().getDefName()} is not a good shape')
-                        pass
-                    else:
-                        print(f'not a good shape')
-                        pass
-                bpy.ops.object.mode_set(mode='OBJECT')
+            hAnimSite = importTransform(bpycollection, node, ancestry, global_matrix)
+            if group:
+                hAnimSite.parent = group
+            elif hAnimSegment:
+                hAnimSite.parent = hAnimSegment
+            attachMesh(all_shapes, site_name, hAnimSite, skeleton)  # mesh is in all_shapes
         elif spec in ('Transform'):
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
@@ -4112,7 +4102,7 @@ def load_web3d(
                 for c in children:
                     if c:
                         if type(c) == type(parent):
-                            print(f"Working on: child {c} type {type(c)}, parent {parent} type {type(parent)}")
+                            print(f"Working on: child {c.name} type {type(c)}, parent {parent.name} type {type(parent)}")
                             c.parent = parent
                             # c.parent_type = 'KEEP_OFFSET'
                         else:
@@ -4129,7 +4119,6 @@ def load_web3d(
                                 # c.parent = skeleton # Armature object
                                 #c.parent_bone = parent.name # Bone name
                                 # c.parent_type = 'BONE_RELATIVE'
-                                # connect_something_to_a_bone(c.name, parent.name, 'BONE_RELATIVE', skeleton)
                             else:
                                 print(f"Can't handle parent-child relationship, child {c} type {type(c)}, parent {parent} type {type(parent)}")
                     else:
@@ -4145,154 +4134,30 @@ def load_web3d(
 
     bpy.ops.object.mode_set(mode='OBJECT')
 
-#def connect_mesh_to_a_bone(mesh_obj, armature_obj, bone_name):
-#
-#    # Get the mesh and armature objects
-#    bpy.context.view_layer.objects.active = armature_obj
-#
-#    if not mesh_obj:
-#        print(f"Mesh object '{mesh_obj.name}' not found.")
-#    elif not armature_obj:
-#        print(f"Armature object '{armature.name}' not found.")
-#    else:
-#        # Check if the bone exists in the armature
-#        if bone_name in armature_obj.data.bones:
-#            # bpy.ops.object.select_all(action='DESELECT')
-#            bone_obj = armature_obj.data.bones[bone_name]
-#            bone_obj.select = True
-#            armature_obj.data.bones.active = bone_obj
-#            bpy.context.object.data.bones.active = bone_obj
-#            # bpy.context.view_layer.objects.active = bone_obj
-#            # Select the mesh
-#            # bpy.context.view_layer.objects.active = mesh_obj
-#            mesh_obj.select_set(True)
-#
-#            # type is one of:
-#            # 'OBJECT', 'BONE', 'BONE_RELATIVE', 'VERTEX', 'VERTEX_TRIANGLE', or 'VERTEX_MULTI'
-#            # Perform the parenting operation to the specific bone
-#            bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
-#            print(f"Successfully parented '{mesh_obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
-#        else:
-#            print(f"Bone '{bone_name}' not found in data.bone")
+def attachMesh(all_shapes, parent_name, parent_obj, skeleton):
+    # print(f"Found parent {parent_name}")
+    for shape in all_shapes:
+        if shape and shape[0] and shape[1] and shape[2] and shape[3]:
+            if shape[3].getRealNode().getDefName() and parent_name == shape[3].getRealNode().getDefName():  # shape[3] is shape's parent node
+                meshobj = shape[1]
+                if skeleton:
+                    connect_mesh_to_a_bone(meshobj, skeleton, parent_name)
+                    meshobj.parent = parent_obj
 
-#def connect_mesh_to_a_bone(mesh_obj, armature_obj, bone_name, site_name=None):
-#    """
-#    Connects a mesh object to a specific bone in an armature.
-#
-#    Args:
-#        mesh_obj (bpy.types.Object): The mesh object to parent.
-#        armature_obj (bpy.types.Object): The armature object containing the bone.
-#        bone_name (str): The name of the bone to parent to.
-#        site_name (str, optional): The name of the site object to parent the mesh to.
-#            If provided, the mesh will be parented to the site object, which is then
-#            parented to the bone.
-#    """
-#
-#    # Check if objects are valid
-#    if not mesh_obj or not armature_obj:
-#        print(f"Error: Missing objects. Mesh: {mesh_obj}, Armature: {armature_obj}")
-#        return
-#
-#    # Check if bone exists in the armature
-#    if bone_name not in armature_obj.data.bones:
-#        print(f"Error: Bone '{bone_name}' not found in armature '{armature_obj.name}'")
-#        return
-#
-#    # Select the bone and make it active
-#    bone_obj = armature_obj.data.bones[bone_name]
-#    armature_obj.data.bones.active = bone_obj
-#
-#    # Select the armature object and make it the active object
-#    bpy.context.view_layer.objects.active = armature_obj
-#    armature_obj.select_set(True)
-#
-#    # Select the bone
-#    bone_obj.select = True
-#
-#    # Set the mesh object as the active object
-#    bpy.context.view_layer.objects.active = mesh_obj
-#
-#    # Select the mesh object and set it as the parent
-#    mesh_obj.select_set(True)
-#
-#    #if site_name:
-#    #    # Parent the mesh object to the site object
-#    #    site_obj = bpy.data.objects[site_name]
-#    #    mesh_obj.parent = site_obj
-#    #    mesh_obj.matrix_parent_inverse = armature_obj.matrix_world.inverted()
-#    #
-#    #    # Parent the site object to the bone
-#    #    bpy.ops.object.parent_set(type='BONE', keep_transform=True)
-#    #else:
-#    #    # Parent the mesh object directly to the bone
-#    bpy.ops.object.parent_set(type='BONE', keep_transform=True)
-#
-#    print(f"Successfully parented '{mesh_obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
-
-#def connect_mesh_to_a_bone(mesh_obj, armature_obj, bone_name, site_name=None):
-#    """
-#    Connects a mesh object to a specific bone in an armature.
-#
-#    Args:
-#        mesh_obj (bpy.types.Object): The mesh object to parent.
-#        armature_obj (bpy.types.Object): The armature object containing the bone.
-#        bone_name (str): The name of the bone to parent to.
-#        site_name (str, optional): The name of the site object to parent the mesh to.
-#            If provided, the mesh will be parented to the site object, which is then
-#            parented to the bone.
-#    """
-#
-#    # Check if objects are valid
-#    if not mesh_obj or not armature_obj:
-#        print(f"Error: Missing objects. Mesh: {mesh_obj}, Armature: {armature_obj}")
-#        return
-#
-#    # Check if bone exists in the armature
-#    if bone_name not in armature_obj.data.bones:
-#        print(f"Error: Bone '{bone_name}' not found in armature '{armature_obj.name}'")
-#        return
-#
-#    # Select the bone
-#    bone_obj = armature_obj.data.bones[bone_name]
-#    bone_obj.select = True
-#
-#    if site_name:
-#        # Parent the mesh object to the site object
-#        site_obj = bpy.data.objects[site_name]
-#        mesh_obj.parent = site_obj
-#        mesh_obj.matrix_parent_inverse = armature_obj.matrix_world.inverted()
-#
-#        # Parent the site object to the bone
-#        site_obj.parent = armature_obj
-#        site_obj.parent_bone = bone_name
-#        site_obj.parent_type = 'BONE'
-#    else:
-#        # Parent the mesh object directly to the bone
-#        mesh_obj.parent = armature_obj
-#        mesh_obj.parent_bone = bone_name
-#        mesh_obj.parent_type = 'BONE'
-#
-#    print(f"Successfully parented '{mesh_obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
-
-import bmesh
-
-def connect_object_to_a_bone(obj, armature_obj, bone_name, site_name=None):
+def connect_mesh_to_a_bone(meshobj, armature_obj, bone_name):
     """
     Connects an object (mesh or curve) to a specific bone in an armature.
     Ensures proper setup for deformation on mesh objects.
 
     Args:
-        obj (bpy.types.Object): The object (mesh or curve) to parent.
+        meshobj (bpy.types.Object): The object (mesh or curve) to parent.
         armature_obj (bpy.types.Object): The armature object containing the bone.
         bone_name (str): The name of the bone to parent to.
-        site_name (str, optional): The name of the site object to parent the object to.
-            If provided, the object will be parented to the site object, which is then
-            parented to the bone.
     """
 
     # Check if objects are valid
-    if not obj or not armature_obj:
-        print(f"Error: Missing objects. Object: {obj}, Armature: {armature_obj}")
+    if not meshobj or not armature_obj:
+        print(f"Error: Missing objects. Object: {meshobj}, Armature: {armature_obj}")
         return
 
     # Check if bone exists in the armature
@@ -4301,54 +4166,20 @@ def connect_object_to_a_bone(obj, armature_obj, bone_name, site_name=None):
         return
 
     # Select the bone
+    bpy.ops.object.mode_set(mode='EDIT')
     bone_obj = armature_obj.data.bones[bone_name]
     bone_obj.select = True
-
-    # If the object is a mesh, set up the Armature modifier and weight painting
-    if obj.type == 'MESH':
-        # Add an Armature modifier to the mesh object if it doesn't have one
-        armature_mod = obj.modifiers.get("Armature")
-        if armature_mod is None:
-            armature_mod = obj.modifiers.new('Armature', 'ARMATURE')
-            armature_mod.object = armature_obj
-
-        # Ensure the mesh object has a vertex group for the bone
-        vertex_group_name = bone_name
-        vertex_group = obj.vertex_groups.get(vertex_group_name)
-        if vertex_group is None:
-            vertex_group = obj.vertex_groups.new(name=vertex_group_name)
-
-        # Set the Armature modifier's vertex group
-        armature_mod.vertex_group = vertex_group_name
-
-        # Create a bmesh and assign weights to the vertex group
-        bm = bmesh.new()
-        bm.from_mesh(obj.data)
-        bm.verts.ensure_lookup_table()
-        dvert_lay = bm.verts.layers.deform.verify()
-        for vert in bm.verts:
-            dvert = vert[dvert_lay]
-            # Use the correct method for setting weight:
-            dvert[vertex_group.index] = 1.0  # Assign a weight of 1.0 to the vertex group
-        bm.to_mesh(obj.data)
-        bm.free()
-
-        # Set up Subsurf modifier if needed
-        if not any(mod.type == 'SUBSURF' for mod in obj.modifiers):
-            subsurf_mod = obj.modifiers.new('Subsurf', 'SUBSURF')
-            subsurf_mod.levels = 2
+    armature_obj.data.bones.active = bone_obj
 
     # Parent the object directly to the bone
-    obj.parent = armature_obj
-    obj.parent_bone = bone_name
-    obj.parent_type = 'BONE'
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.context.view_layer.objects.active = meshobj
+    meshobj.select_set(True)
+    meshobj.parent = armature_obj
+    meshobj.parent_bone = bone_name
+    meshobj.parent_type = 'BONE'
 
-#    if site_name:
-#        # Parent the site object to the mesh object
-#        site_obj = bpy.data.objects[site_name]
-#        site_obj.parent = obj
-
-    print(f"Successfully parented '{obj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
+    print(f"Successfully parented '{meshobj.name}' to bone '{bone_name}' in armature '{armature_obj.name}'.")
 
 def load_with_profiler(
         context,
