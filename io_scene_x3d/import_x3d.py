@@ -1614,9 +1614,6 @@ def getFinalMatrix(node, mtx, ancestry, global_matrix):
     if bpyob.type == 'EMPTY' and len(transform_nodes) > 0:
         mat = translateTransform(transform_nodes[0], ancestry)
         bpyob.matrix_local = mat
-        #loc, rot, scale = mat.decompose()
-        #bpyob.location -= loc
-#    else:
 #    for node_tx in transform_nodes:
 #        mat = translateTransform(node_tx, ancestry)
 #        mtx = mat @ mtx
@@ -3593,6 +3590,7 @@ def importHAnimSegment(bpycollection, node, ancestry, global_matrix):
     bpyob.empty_display_type = 'PLAIN_AXES'
     bpyob.empty_display_size = 0.2
 
+    return bpyob
 
 #def importTimeSensor(node):
 def action_fcurve_ensure(action, data_path, array_index):
@@ -3979,56 +3977,57 @@ def load_web3d(
             importLamp(bpycollection, node, spec, ancestry, global_matrix)
         elif spec == 'Viewpoint':
             importViewpoint(bpycollection, node, ancestry, global_matrix)
-#        elif spec == 'HAnimHumanoid':
-#            joints = []
-#            segments = []
-#            jointSkin = {}
-#            skeleton = importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin)
-#            # skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
-#            skinCoord = node.getChildBySpec('Coordinate')
-#            if skinCoord:
-#                #if skinCoord.getFieldAsString("containerField", None, ancestry) == "skinCoord":
-#                    print(f"Skin coord is {skinCoord}")
-#                    for shape in all_shapes:
-#                        if shape:
-#                            print(f"Skin mesh is found")
-#                            if shape[0] and shape[1] and shape[2] and skinCoord.getDefName() == shape[2].getDefName():
-#                                print("Got mesh obj")
-#                                meshobj = shape[1]
-#                                meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
-#                                meshobj.modifiers['ArmatureToMesh'].object = skeleton
-#                            else:
-#                                print(f"DEFs match? missing shape[:]?  skinCoord.getDefName() == shape[2].getDefName()")
-#                        else:
-#                            print(f"no shape {shape} ? all shapes is {all_shapes}")
-#
-#                #else:
-#                #    print(f"Couldn't get containerField {skinCoord}")
-#            else:
-#                print("No skinCoord, no skin weights, no skin animation")
-#        
-#        
-#            print(f"mesh is {meshobj}")
-#            #bpy.ops.object.mode_set(mode="EDIT")
-#            bpy.ops.object.mode_set(mode="OBJECT")
-#            #bmesh.from_edit_mesh(meshobj.data)
-#            imported = []
-#            print(f"Number of segments {len(segments)}")
-#            for segment in segments:
-#                parent_joint, child_joint = segment
-#                # print(f"Segment {parent_joint} {child_joint} loading weights")
-#                if meshobj and child_joint not in imported and child_joint in jointSkin:
-#                    importSkinWeights(meshobj, child_joint, jointSkin[child_joint], "child")
-#                    imported.append(child_joint)
-#                if meshobj and parent_joint not in imported and parent_joint in jointSkin:
-#                    importSkinWeights(meshobj, parent_joint, jointSkin[parent_joint], "parent")
-#                    imported.append(parent_joint)
-#        
+        elif spec == 'HAnimHumanoid':
+            joints = []
+            segments = []
+            jointSkin = {}
+            skeleton = importHAnimHumanoid(bpycollection, node, ancestry, global_matrix, joints, segments, jointSkin)
+            # skinCoord = node.getChildByName('skinCoord') # 'Coordinate'
+            skinCoord = node.getChildBySpec('Coordinate')
+            if skinCoord:
+                #if skinCoord.getFieldAsString("containerField", None, ancestry) == "skinCoord":
+                    print(f"Skin coord is {skinCoord}")
+                    for shape in all_shapes:
+                        if shape:
+                            print(f"Skin mesh is found")
+                            if shape[0] and shape[1] and shape[2] and skinCoord.getDefName() == shape[2].getDefName():
+                                print("Got mesh obj")
+                                meshobj = shape[1]
+                                meshobj.modifiers.new(name='ArmatureToMesh', type='ARMATURE')
+                                meshobj.modifiers['ArmatureToMesh'].object = skeleton
+                            else:
+                                print(f"DEFs match? missing shape[:]?  skinCoord.getDefName() == shape[2].getDefName()")
+                        else:
+                            print(f"no shape {shape} ? all shapes is {all_shapes}")
+
+                #else:
+                #    print(f"Couldn't get containerField {skinCoord}")
+            else:
+                print("No skinCoord, no skin weights, no skin animation")
+        
+        
+            print(f"mesh is {meshobj}")
+            #bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.object.mode_set(mode="OBJECT")
+            #bmesh.from_edit_mesh(meshobj.data)
+            imported = []
+            print(f"Number of segments {len(segments)}")
+            for segment in segments:
+                parent_joint, child_joint = segment
+                # print(f"Segment {parent_joint} {child_joint} loading weights")
+                if meshobj and child_joint not in imported and child_joint in jointSkin:
+                    importSkinWeights(meshobj, child_joint, jointSkin[child_joint], "child")
+                    imported.append(child_joint)
+                if meshobj and parent_joint not in imported and parent_joint in jointSkin:
+                    importSkinWeights(meshobj, parent_joint, jointSkin[parent_joint], "parent")
+                    imported.append(parent_joint)
         elif spec in ('HAnimSegment'):
             child_segment_name = node.getDefName()
-            hAnimSegment = importTransform(bpycollection, node, ancestry, global_matrix)
-            # hAnimSegment.parent = hAnimJoint
-            attachMesh(all_shapes, child_segment_name, hAnimSegment, skeleton)  # mesh is in all_shapes
+            hAnimSegment = importHAnimSegment(bpycollection, node, ancestry, global_matrix)
+            attachMesh(all_shapes, child_segment_name, hAnimSegment)  # mesh is in all_shapes
+            hAnimSegment.parent = skeleton
+            hAnimSegment.parent_bone = parent_joint_name
+            hAnimSegment.parent_type = 'BONE'
         elif spec in ('HAnimDisplacer'):
             if meshobj:
                 importHAnimDisplacer(node, ancestry, meshobj, displacers)
@@ -4048,7 +4047,7 @@ def load_web3d(
             #    hAnimSite.parent = group
             #elif hAnimSegment:
             #    hAnimSite.parent = hAnimSegment
-            attachMesh(all_shapes, site_name, hAnimSite, skeleton)  # mesh is in all_shapes
+            attachMesh(all_shapes, site_name, hAnimSite)  # mesh is in all_shapes
         elif spec in ('Transform'):
             # Only use transform nodes when we are not importing a flat object hierarchy
             if PREF_FLAT == False:
@@ -4170,15 +4169,14 @@ def load_web3d(
 
     bpy.ops.object.mode_set(mode='OBJECT')
 
-def attachMesh(all_shapes, parent_name, parent_obj, skeleton):
+def attachMesh(all_shapes, parent_name, parent_obj):
     # print(f"Found parent {parent_name}")
     for shape in all_shapes:
         if shape and shape[0] and shape[1] and shape[2] and shape[3]:
             if shape[3].getDefName() and parent_name == shape[3].getDefName():  # shape[3] is shape's parent node
                 meshobj = shape[1]
-                if skeleton:
-                    connect_mesh_to_a_bone(meshobj, skeleton, parent_name)
-                    meshobj.parent = parent_obj
+                meshobj.parent = parent_obj
+
 
 def connect_mesh_to_a_bone(meshobj, armature_obj, bone_name):
     """
