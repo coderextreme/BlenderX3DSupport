@@ -4175,8 +4175,9 @@ def attachMesh(all_shapes, parent_name, parent_obj):
         if shape and shape[0] and shape[1] and shape[2] and shape[3]:
             if shape[3].getDefName() and parent_name == shape[3].getDefName():  # shape[3] is shape's parent node
                 meshobj = shape[1]
+                if skeleton:
+                    connect_mesh_to_a_bone(meshobj, skeleton, parent_name)
                 meshobj.parent = parent_obj
-
 
 def connect_mesh_to_a_bone(meshobj, armature_obj, bone_name):
     """
