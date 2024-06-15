@@ -95,10 +95,10 @@ def write_interpolators(obj, name, prefix):  # pass armature object
                 node = type(node)(USE=pname)
             else:
                 node.USE = pname
-            print(f"{pname} is the value of USE")
+            #print(f"{pname} is the value of USE")
         else:
             node.DEF = pname
-            print(f"{pname} is the value of DEF")
+            #print(f"{pname} is the value of DEF")
         return node
 
     def ensure_rot_order(rot_order_str):
@@ -307,7 +307,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
         # print(f"Creating interpolators for {bone.name}")
-        pbonename = prefix+substitute(bone.name)
+        pbonename = substitute(bone.name)
         if bone.name == 'humanoid_root':
             pibonename = name+"_PI_"+substitute(bone.name)
             posInterp = PositionInterpolator()
@@ -337,7 +337,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         orientationRoutes.append(ROUTE(
             fromNode=oibonename,
             fromField="value_changed",
-            toNode=pbonename,
+            toNode=prefix+pbonename,
             toField="rotation"))
         b += 1
     if not root_found:
@@ -469,7 +469,7 @@ def write_obj_interpolators(obj, matrix, prefix):
     positionRoutes = []
     orientationRoutes = []
     # print(f"Creating interpolators for {obj.name}")
-    pobjname = prefix+substitute(obj.name)
+    pobjname = substitute(obj.name)
     piobjname = name+"_PI_"+substitute(obj.name)
     posInterp = PositionInterpolator()
     setUSEDEF(name+"_PI_", obj.name, posInterp)
@@ -497,7 +497,7 @@ def write_obj_interpolators(obj, matrix, prefix):
     orientationRoutes.append(ROUTE(
         fromNode=oiobjname,
         fromField="value_changed",
-        toNode=pobjname,
+        toNode=prefix+pobjname,
         toField="rotation"))
     lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
     keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps

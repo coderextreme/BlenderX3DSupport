@@ -55,12 +55,15 @@ bvh2HAnim = {
 "RightHand" : "r_carpal"
 }
 
+HANIM_DEF_PREFIX = 'hanim_' # was hanim_
+
 def substitute(subs):
     if subs in bvh2HAnim:
-        print(f"converting {subs} to {bvh2HAnim[subs]}")
+        # print(f"converting {subs} to {bvh2HAnim[subs]}")
         subs = bvh2HAnim[subs]
     else:
-        print(f"{subs} not found")
+        pass
+        # print(f"{subs} not found")
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
 
 uuid_defs = {}                   # defs
@@ -81,25 +84,33 @@ def write_animation(obj):  # pass armature object
             print(f"wa DEF {DEF} used {uuid_defs[DEF]}")
             return False
 
-#    def setUSEDEF(prefix, name, node):
-#        if name is None:
-#            name = ""
-#        if name.startswith(prefix):
-#            name = name[len(prefix):]
-#        node.name = substitute(name)
-#        pname = prefix+substitute(name)
-#        if name_used(pname):
-#            # create a new empty copy for USE
-#            # node = type(node)(USE=pname)
-#            if name == "SiteShape":
-#                node = type(node)(USE=pname)
-#            else:
-#                node.USE = pname
-#            print(f"{pname} is the value of USE")
-#        else:
-#            node.DEF = pname
-#            print(f"{pname} is the value of DEF")
-#        return node
+    def name_used(DEF):
+        if DEF in uuid_defs.keys():
+            uuid_defs[DEF] = uuid_defs[DEF] + 1
+            print(f"ex DEF {DEF} used {uuid_defs[DEF]}")
+            return True
+        else:
+            uuid_defs.update({DEF: 1})
+            print(f"ex DEF {DEF} used {uuid_defs[DEF]}")
+            return False
+
+    def setUSEDEF(prefix, name, node):
+        if name is None:
+            name = ""
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+        pname = prefix+substitute(name)
+        if node:
+            node.name = substitute(name)
+            if name_used(pname):
+                node = type(node)(USE=pname)
+                #print(f"{pname} is the value of USE")
+            else:
+                node.DEF = pname
+                #print(f"{pname} is the value of DEF")
+            return node
+        else:
+            return pname
 
     def ensure_rot_order(rot_order_str):
         if set(rot_order_str) != {'X', 'Y', 'Z'}:
@@ -311,17 +322,16 @@ def write_animation(obj):  # pass armature object
     scene.frame_set(frame_current)
     armature = obj
     numbones = len(armature.pose.bones)
-    HANIM_DEF_PREFIX = 'hanim_'
     if root_found:
         print_console('INFO', "humanoid_root found in bone data, adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range((numbones + 1) * 3)])
         channels="6 Xposition Yposition Zposition Xrotation Yrotation Zrotation "+("3 Xrotation Yrotation Zrotation " * (numbones - 1))
-        joints=HANIM_DEF_PREFIX+"humanoid_root "+(" ".join(HANIM_DEF_PREFIX+substitute(bone.name) for bone in armature.pose.bones if bone.name != "humanoid_root"))
+        joints=setUSEDEF(HANIM_DEF_PREFIX, "humanoid_root", None)+(" ".join(setUSEDEF(HANIM_DEF_PREFIX, bone.name, None) for bone in armature.pose.bones if bone.name != "humanoid_root"))
     else:
         print_console('ERROR', "humanoid_root not found in bone data, not adding position")
         channelsEnabled=MFBool([random.choice([True]) for i in range(numbones * 3)])
         channels=("3 Xrotation Yrotation Zrotation " * (numbones))
-        joints=(" ".join(HANIM_DEF_PREFIX+substitute(bone.name) for bone in armature.pose.bones))
+        joints=(" ".join(setUSEDEF(HANIM_DEF_PREFIX, bone.name, None) for bone in armature.pose.bones))
 
     node = HAnimMotion(
         frameIncrement=1,
