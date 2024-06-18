@@ -463,6 +463,14 @@ class ExportX3DV_Base(ConvertX3DV_Base):
             default=6
             )
 
+    export_hanim_prefix: StringProperty(
+            name="HAnim DEF prefix",
+            description=(
+                'Humanoid Animation prefix for DEF attributes in X3D'
+            ),
+            default=''
+            )
+
 
     # Custom scene property for saving settings
     scene_key = "x3dvExportSettings"
@@ -566,6 +574,7 @@ class ExportX3DV_Base(ConvertX3DV_Base):
         export_settings['x3dv_tangents'] = self.export_tangents and self.export_normals
         export_settings['x3dv_loose_edges'] = self.use_mesh_edges
         export_settings['x3dv_loose_points'] = self.use_mesh_vertices
+        export_settings['x3dv_hanim_prefix'] = self.export_hanim_prefix
 
 
         export_settings['x3dv_materials'] = self.export_materials

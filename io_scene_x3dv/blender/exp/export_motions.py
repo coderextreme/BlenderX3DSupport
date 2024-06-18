@@ -55,7 +55,7 @@ bvh2HAnim = {
 "RightHand" : "r_carpal"
 }
 
-HANIM_DEF_PREFIX = 'hanim_' # was hanim_
+HANIM_DEF_PREFIX = '' # was hanim_
 
 def substitute(subs):
     if subs in bvh2HAnim:
@@ -339,7 +339,7 @@ def write_animation(obj):  # pass armature object
         frameIndex=frame_start,
         frameDuration=frame_duration,
         loop=True,
-        enabled=True,
+        enabled=False,
         channels=channels,
         joints=joints,
         channelsEnabled=channelsEnabled,

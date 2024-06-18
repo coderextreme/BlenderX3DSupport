@@ -60,46 +60,43 @@ def substitute(subs):
         print(f"converting {subs} to {bvh2HAnim[subs]}")
         subs = bvh2HAnim[subs]
     else:
-        print(f"{subs} not found")
+        #print(f"{subs} not found")
+        pass
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
 
 uuid_defs = {}                   # defs
+
+def name_used(DEF):
+    if DEF in uuid_defs.keys():
+        uuid_defs[DEF] = uuid_defs[DEF] + 1
+        return True
+    else:
+        uuid_defs.update({DEF: 1})
+        return False
+
+
+def setUSEDEF(prefix, name, node):
+    if name is None:
+        name = ""
+    if name.startswith(prefix):
+        name = name[len(prefix):]
+    node.name = substitute(name)
+    pname = prefix+substitute(name)
+    if name_used(pname):
+        if name == "SiteShape":
+            # create a new empty copy for USE
+            node = type(node)(USE=pname)
+        else:
+            node.USE = pname
+    else:
+        node.DEF = pname
+
+    return node
 
 def write_interpolators(obj, name, prefix):  # pass armature object
 
     root_found = False
     uuid_defs = {}                   # defs
-
-    def name_used(DEF):
-        if DEF in uuid_defs.keys():
-            uuid_defs[DEF] = uuid_defs[DEF] + 1
-            print(f"wi DEF {DEF} used {uuid_defs[DEF]}")
-            return True
-        else:
-            uuid_defs.update({DEF: 1})
-            print(f"wi DEF {DEF} used {uuid_defs[DEF]}")
-            return False
-
-
-    def setUSEDEF(prefix, name, node):
-        if name is None:
-            name = ""
-        if name.startswith(prefix):
-            name = name[len(prefix):]
-        node.name = substitute(name)
-        pname = prefix+substitute(name)
-        if name_used(pname):
-            # create a new empty copy for USE
-            # node = type(node)(USE=pname)
-            if name == "SiteShape":
-                node = type(node)(USE=pname)
-            else:
-                node.USE = pname
-            #print(f"{pname} is the value of USE")
-        else:
-            node.DEF = pname
-            #print(f"{pname} is the value of DEF")
-        return node
 
     def ensure_rot_order(rot_order_str):
         if set(rot_order_str) != {'X', 'Y', 'Z'}:
@@ -287,17 +284,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     numbones = len(armature.pose.bones)
     frame_range = [frame_current, frame_end]
     time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
-    clock_name = substitute(name+"_Clock")
-    setUSEDEF("", clock_name, time_sensor)
-    activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
-    activate_name = substitute(name+"_Close")
-    setUSEDEF("", activate_name, activate_sensor)
-    activate_route = ROUTE(
-            fromNode=activate_name,
-            fromField="enterTime",
-            toNode=clock_name,
-            toField="startTime")
-
+    clock_name = substitute("X3DV_Clock")
     positionInterpolators = []
     orientationInterpolators = []
     positionRoutes = []
@@ -309,9 +296,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         # print(f"Creating interpolators for {bone.name}")
         pbonename = substitute(bone.name)
         if bone.name == 'humanoid_root':
-            pibonename = name+"_PI_"+substitute(bone.name)
+            pibonename = substitute(bone.name)+"_PI"
             posInterp = PositionInterpolator()
-            setUSEDEF(name+"_PI_", bone.name, posInterp)
+            setUSEDEF("", pibonename, posInterp)
             positionInterpolators.append(posInterp)
             positionRoutes.append(ROUTE(
                 fromNode=clock_name,
@@ -326,9 +313,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             root_found = True
 
         rotInterp = OrientationInterpolator()
-        setUSEDEF(name+"_OI_", substitute(bone.name), rotInterp)
+        oibonename = substitute(bone.name)+"_OI"
+        setUSEDEF("", oibonename, rotInterp)
         orientationInterpolators.append(rotInterp)
-        oibonename = name+"_OI_"+substitute(bone.name)
         orientationRoutes.append(ROUTE(
             fromNode=clock_name,
             fromField="fraction_changed",
@@ -337,7 +324,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         orientationRoutes.append(ROUTE(
             fromNode=oibonename,
             fromField="value_changed",
-            toNode=prefix+pbonename,
+            toNode=pbonename,
             toField="rotation"))
         b += 1
     if not root_found:
@@ -403,163 +390,242 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     if not skip:
         print_console('INFO', "humanoid_root found in bone data")
         nodes.append(positionInterpolators[:])
-        nodes.append(positionRoutes[:])
-    print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
-    nodes.append(time_sensor)
-    nodes.append(activate_sensor)
-    nodes.append(activate_route)
+    # print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
     nodes.append(orientationInterpolators[:])
+
+    if not skip:
+        print_console('INFO', "humanoid_root found in bone data")
+        nodes.append(positionRoutes[:])
     nodes.append(orientationRoutes[:])
     return nodes
 
-def write_obj_interpolators(obj, matrix, prefix):
+def export_TimeSensor():
+        scene = bpy.context.scene
+        nodes = []
+        frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
+        frame_start = scene.frame_start
+        frame_end = scene.frame_end
+        frame_current = scene.frame_current
+        frame_count = frame_end - frame_start + 1
 
-    uuid_defs = {}                   # defs
+        key_divider = (frame_count - 1) * frame_count / scene.render.fps 
 
-    def name_used(DEF):
-        if DEF in uuid_defs.keys():
-            uuid_defs[DEF] = uuid_defs[DEF] + 1
-            return True
-        else:
-            uuid_defs.update({DEF: 1})
-            return False
+        print_console('INFO', "Frame count: %d\n" % frame_count)
+        print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
+        print_console('INFO', "Key divider: %.6f\n" % key_divider)
+
+        time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
+        clock_name = substitute("X3DV_Clock")
+        setUSEDEF("", clock_name, time_sensor)
+
+        activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ]) # there are 2 sensors, one for bones, one for objects
+        activate_name = substitute("X3DV_Close")
+        setUSEDEF("", activate_name, activate_sensor)
+        activate_route = ROUTE(
+                fromNode=activate_name,
+                fromField="enterTime",
+                toNode=clock_name,
+                toField="startTime")
+
+        nodes.append(time_sensor)
+        nodes.append(activate_sensor)
+        nodes.append(activate_route)
+        return nodes
 
 
-    def setUSEDEF(prefix, name, node):
-        if name is None:
-            name = ""
-        if name.startswith(prefix):
-            name = name[len(prefix):]
-        node.name = substitute(name)
-        pname = prefix+substitute(name)
-        if name_used(pname):
-            node.USE = pname
-        else:
-            node.DEF = pname
-
-    name = obj.name
-    nodes = []
-    scene = bpy.context.scene
-    frame_start = scene.frame_start
-    frame_end = scene.frame_end
-    frame_current = scene.frame_current
-    frame_count = frame_end - frame_start + 1
-    frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
-
-    key_divider = (frame_count - 1) * frame_count / scene.render.fps 
-
-    print_console('INFO', "Frame count: %d\n" % frame_count)
-    print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
-    print_console('INFO', "Key divider: %.6f\n" % key_divider)
-    frame_range = [frame_current, frame_end]
-    time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
-    clock_name = substitute(name+"_Clock")
-    setUSEDEF("", clock_name, time_sensor)
-    activate_sensor = ProximitySensor(size=[ 1000000, 1000000, 1000000 ])
-    activate_name = substitute(name+"_Close")
-    setUSEDEF("", activate_name, activate_sensor)
-    activate_route = ROUTE(
-            fromNode=activate_name,
-            fromField="enterTime",
-            toNode=clock_name,
-            toField="startTime")
-
-    positionInterpolators = []
-    orientationInterpolators = []
-    positionRoutes = []
-    orientationRoutes = []
-    # print(f"Creating interpolators for {obj.name}")
-    pobjname = substitute(obj.name)
-    piobjname = name+"_PI_"+substitute(obj.name)
-    posInterp = PositionInterpolator()
-    setUSEDEF(name+"_PI_", obj.name, posInterp)
-    positionInterpolators.append(posInterp)
-    positionRoutes.append(ROUTE(
-        fromNode=clock_name,
-        fromField="fraction_changed",
-        toNode=piobjname,
-        toField="set_fraction"))
-    positionRoutes.append(ROUTE(
-        fromNode=piobjname,
-        fromField="value_changed",
-        toNode=pobjname,
-        toField="translation"))
-
-    rotInterp = OrientationInterpolator()
-    setUSEDEF(name+"_OI_", substitute(obj.name), rotInterp)
-    orientationInterpolators.append(rotInterp)
-    oiobjname = name+"_OI_"+substitue(obj.name)
-    orientationRoutes.append(ROUTE(
-        fromNode=clock_name,
-        fromField="fraction_changed",
-        toNode=oiobjname,
-        toField="set_fraction"))
-    orientationRoutes.append(ROUTE(
-        fromNode=oiobjname,
-        fromField="value_changed",
-        toNode=prefix+pobjname,
-        toField="rotation"))
-    lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
-    keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
-    keyframe_time = 0
-
-    skip = False
-    for frame in range(frame_start, frame_end + 1):
-        scene.frame_set(frame)
-
-        loc, rot, scale = matrix.decompose()
-        rot = rot.to_axis_angle()
-        rot = (*rot[0].normalized(), rot[1])
-
-        positionInterpolators[0].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
-        positionInterpolators[0].keyValue.append(round_array(loc)[:]) # location
-
-        rt = [None, None, None, None]
-        rt[0] = rot[0]
-        rt[1] = rot[1]
-        rt[2] = rot[2]
-        rt[3] = rot[3]
-        axa = round_array_no_unit_scale(rt)[:]
-        oldlen = len(orientationInterpolators[0].keyValue)
-        if oldlen > 0:
-            oldaxa = orientationInterpolators[0].keyValue[oldlen-1]
-        else:
-            oldaxa = None
-        if frame == lasttime or oldaxa is None or (oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]):
-            orientationInterpolators[0].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
-            orientationInterpolators[0].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
-        keyframe_time = keyframe_time + keyframe_length
+def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
 
     animation_data = obj.animation_data
+    nodes = []
     if animation_data:
-        action = animation_data.action
-        fcurves = action.fcurves
+        name = obj_main_id
+        scene = bpy.context.scene
+        frame_start = scene.frame_start
+        frame_end = scene.frame_end
+        frame_current = scene.frame_current
+        frame_count = frame_end - frame_start + 1
+        frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
 
-        coordinateInterpolator = CoordinateInterpolator(DEF=obj.name+"_CI")
-        for fc in fcurves:
-            if fc.data_path == 'location':
-                for keyframe in fc.keyframe_points:
-                    coordinateInterpolator.key.append(keyframe.co[0])
-                    for coi in keyframe.co:  # not just 3 numbers in a coordinate
-                        coordinateInterpolator.keyValue.append(keyframe.co[coi])
-        coordinateRoute = ROUTE(
+        key_divider = (frame_count - 1) * frame_count / scene.render.fps 
+
+        frame_range = [frame_current, frame_end]
+        clock_name = substitute("X3DV_Clock")
+        positionInterpolators = []
+        orientationInterpolators = []
+        positionRoutes = []
+        orientationRoutes = []
+        # print(f"Creating interpolators for {obj_main_id}")
+        pobjname = substitute(obj_main_id)
+
+        posInterp = PositionInterpolator()
+        piobjname = substitute(obj_main_id)+"transInterp"
+        setUSEDEF("", piobjname, posInterp)
+        positionInterpolators.append(posInterp)
+
+        positionRoutes.append(ROUTE(
             fromNode=clock_name,
             fromField="fraction_changed",
-            toNode=obj.name+"_CI",
-            toField="set_fraction")
-        print_console('INFO', "Writing 1 coordinate interpolator, 1 route.")
-        nodes.append(coordinateInterpolator)
-        nodes.append(coordinateRoute)
+            toNode=piobjname,
+            toField="set_fraction"))
+        positionRoutes.append(ROUTE(
+            fromNode=piobjname,
+            fromField="value_changed",
+            toNode=pobjname,
+            toField="translation"))
+
+        rotInterp = OrientationInterpolator()
+        oiobjname = ""+substitute(obj_main_id)+"RotInterp"
+        setUSEDEF("", oiobjname, rotInterp)
+        orientationInterpolators.append(rotInterp)
+
+        orientationRoutes.append(ROUTE(
+            fromNode=clock_name,
+            fromField="fraction_changed",
+            toNode=oiobjname,
+            toField="set_fraction"))
+        orientationRoutes.append(ROUTE(
+            fromNode=oiobjname,
+            fromField="value_changed",
+            toNode=pobjname,
+            toField="rotation"))
+
+        lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
+        keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
+        keyframe_time = 0
+
+        skip = False
+        for frame in range(frame_start - 1, frame_end + 1): # X3D starts at 0, Blender starts at 1
+            scene.frame_set(frame)
+
+            loc, rot, scale = matrix.decompose()
+            rot = rot.to_axis_angle()
+            rot = (*rot[0].normalized(), rot[1])
+
+            lo = [None, None, None]
+            lo[0] = loc[0]
+            lo[1] = loc[1]
+            lo[2] = loc[2]
+            pos = round_array_no_unit_scale(lo)[:]
+            oldlen = len(positionInterpolators[0].keyValue)
+            if oldlen > 0:
+                oldpos = positionInterpolators[0].keyValue[oldlen-1]
+            else:
+                oldpos = None
+            if frame == lasttime or oldpos is None or  oldpos[0] != pos[0] or oldpos[1] != pos[1] or oldpos[2] != pos[2]:
+                # positionInterpolators[0].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
+                # positionInterpolators[0].keyValue.append([pos[0], pos[1], pos[2]]) # location
+                pass
+
+            rt = [None, None, None, None]
+            rt[0] = rot[0]
+            rt[1] = rot[1]
+            rt[2] = rot[2]
+            rt[3] = rot[3]
+            axa = round_array_no_unit_scale(rt)[:]
+            oldlen = len(orientationInterpolators[0].keyValue)
+            if oldlen > 0:
+                oldaxa = orientationInterpolators[0].keyValue[oldlen-1]
+            else:
+                oldaxa = None
+            if frame == lasttime or oldaxa is None or oldaxa[0] != axa[0] or oldaxa[1] != axa[1] or oldaxa[2] != axa[2] or oldaxa[3] != axa[3]:
+                # orientationInterpolators[0].key.append(round_array_no_unit_scale([keyframe_time / key_divider])[:])
+                # orientationInterpolators[0].keyValue.append([axa[0], axa[1], axa[2], axa[3]])
+                pass
+            action = animation_data.action
+            fcurves = action.fcurves
+            locarr = ('X', 'Y', 'Z')
+            locind = 0
+            rotind = 0
+            location = [ None, None, None ]
+            axis_angle = [ None, None, None, None ]
+            obj.rotation_mode = 'AXIS_ANGLE'
+            for fc in fcurves:
+                if fc.data_path == 'location':
+                    for keyframe in fc.keyframe_points:
+                        #print(f"frame {frame} keyframe {round(keyframe.co[0], 0)} time {keyframe_time} axis {locind}")
+                        if frame == round(keyframe.co[0], 0) and locind < 3:
+                            # print(f"keyframe {keyframe}")
+                            print(f"frame {frame} index {locind}")
+                            print(f"data path {fc.data_path} axis {locarr[locind]}")
+                            print(f"keyframe.co[0] frame {keyframe.co[0]}")
+                            print(f"keyframe.co[1] value {keyframe.co[1]}")
+                            location[locind] = round(keyframe.co[1], 5)
+                    locind = locind + 1
+                elif fc.data_path.endswith('rotation_axis_angle'):
+                    # print(f"Unhandled data_path {fc.data_path}")
+                    for keyframe in fc.keyframe_points:
+                        #print(f"frame {frame} {round(keyframe.co[0], 0)} {keyframe_time} axis {rotind}")
+                        if frame == round(keyframe.co[0], 0) and rotind < 4:
+                            print(f"frame {frame} index {rotind}")
+                            print(f"keyframe.co[1] value {keyframe.co[1]}")
+                            axis_angle[rotind] = round(keyframe.co[1], 5)
+                    rotind = rotind + 1
+                elif fc.data_path == 'rotation_euler':
+                    print(f"Unhandled data_path {fc.data_path}")
+                else:
+                    print(f"Unhandled data_path {fc.data_path}")
+
+            if location[0] or location[1] or location[2]:
+                positionInterpolators[0].key.append(round(frame/250, 5))
+                positionInterpolators[0].keyValue.append(location) # location
+
+            if axis_angle[0] or axis_angle[1] or axis_angle[2] or axis_angle[3]:
+                orientationInterpolators[0].key.append(round(frame/250, 5))
+                orientationInterpolators[0].keyValue.append(axis_angle) # axis_angle
+
+        #coordinateInterpolator = CoordinateInterpolator(DEF=obj_main_id+"_CI")
+        #for fc in fcurves:
+        #    if fc.data_path == 'location':
+        #        for keyframe in fc.keyframe_points:
+        #            coordinateInterpolator.key.append(keyframe.co[0])
+        #            for coi in keyframe.co:  # not just 3 numbers in a coordinate
+        #                print(f"coi {coi}")
+        #                coordinateInterpolator.keyValue.append(keyframe.co[:])
+        #coordinateRoute = ROUTE(
+        #    fromNode=clock_name,
+        #    fromField="fraction_changed",
+        #    toNode=obj_main_id+"_CI",
+        #    toField="set_fraction")
+        #print_console('INFO', "Writing 1 coordinate interpolator, 1 route.")
+        #nodes.append(coordinateInterpolator)
+        #nodes.append(coordinateRoute)
 
 
+        #if len(positionInterpolators[0].key) == 2 and \
+        #    positionInterpolators[0].key[0] == 0.0 and positionInterpolators[0].key[1] == 1.0 and \
+        #    positionInterpolators[0].keyValue[0][0] == positionInterpolators[0].keyValue[1][0] and \
+        #    positionInterpolators[0].keyValue[0][1] == positionInterpolators[0].keyValue[1][1] and \
+        #    positionInterpolators[0].keyValue[0][2] == positionInterpolators[0].keyValue[1][2]:
+        #    print("Equal Pos, Removing")
+        #else:
+        pifound = False
+        for pi in positionInterpolators:
+            if len(pi.key) > 0 or len(pi.keyValue) > 0:
+                nodes.append(pi)
+                pifound = True
+
+        #if len(orientationInterpolators[0].key) == 2 and \
+        #        orientationInterpolators[0].key[0] == 0.0 and orientationInterpolators[0].key[1] == 1.0 and \
+        #        orientationInterpolators[0].keyValue[0][0] == orientationInterpolators[0].keyValue[1][0] and \
+        #        orientationInterpolators[0].keyValue[0][1] == orientationInterpolators[0].keyValue[1][1] and \
+        #        orientationInterpolators[0].keyValue[0][2] == orientationInterpolators[0].keyValue[1][2] and \
+        #        orientationInterpolators[0].keyValue[0][3] == orientationInterpolators[0].keyValue[1][3]:
+        #    print("Equal Ori, Removing")
+        #else:
+        oifound = False
+        for oi in orientationInterpolators:
+            if len(oi.key) > 0 or len(oi.keyValue) > 0:
+                nodes.append(oi)
+                oifound = True
+
+
+        keyframe_time = keyframe_time + keyframe_length
+
+        if pifound:
+            nodes.append(positionRoutes[:])
+        if oifound:
+            nodes.append(orientationRoutes[:])
+
+        # print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
     scene.frame_set(frame_current)
-    nodes.append(positionInterpolators[:])
-    nodes.append(positionRoutes[:])
-    print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
-    nodes.append(time_sensor)
-    nodes.append(activate_sensor)
-    nodes.append(activate_route)
-    nodes.append(orientationInterpolators[:])
-    nodes.append(orientationRoutes[:])
     return nodes
-

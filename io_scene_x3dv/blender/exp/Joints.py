@@ -19,7 +19,7 @@ JOINTS = [
 "l_metatarsophalangeal_3",
 "l_tarsal_proximal_interphalangeal_3",
 "l_tarsal_distal_interphalangeal_3",
-"l_calcaneuscuboid",
+"l_calcaneocuboid",
 "l_transversetarsal",
 "l_tarsometatarsal_4",
 "l_metatarsophalangeal_4",
