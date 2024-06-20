@@ -978,7 +978,8 @@ def export(context, x3dv_export_settings):
             pass
         #armature_id = quoteattr(HANIM_DEF_PREFIX+armature.parent.name)
         motions = [b2xHAnimNode(armature, armature_matrix, "motions", "HAnimMotion")]
-        # motions = None
+        # comment the below out if you want mostions
+        motions = None
         humanoid = b2xHAnimNode(armature, armature_matrix, "humanoid", "HAnimHumanoid", motions=motions)
         HAnimNode(armature.name, None, armature, joint_lookup)  # populates joint_lookup
         for joint in armature.data.bones:
@@ -2210,15 +2211,24 @@ def export(context, x3dv_export_settings):
                                 # attach skin Humanoid.
                                 if node:
                                     node.skin.append(x3dnode)
+                                if botttom:
+                                    botttom.skin.append(x3dnode)
                                 point = b2xFindSkinCoordPoint(x3dnode)
                                 DEFnodes = b2xDEFedCoordinates(x3dnode)
                             else:
                                 print(f"WARNING, attempting to use children in {type(bottom)} for field type {type(x3dnode)}")
-                                if isinstance(x3dnode, HAnimJoint):
+                                if isinstance(x3dnode, HAnimJoint) and isinstance(node, HAnimHumanoid):
                                     bottom.skeleton.append(x3dnode) # skip joints and other fields for now
                                 elif  isinstance(bottom, HAnimHumanoid) and isinstance(x3dnode, HAnimHumanoid):
                                     print(f"WARNING3, attempting to use children in {type(bottom)} for field type {type(x3dnode)}")
+                                elif isinstance(x3dnode, HAnimJoint) and isinstance(bottom, HAnimHumanoid):
+                                    if x3dnode.USE:
+                                        bottom.joints.append(x3dnode)
+                                    else:
+                                        bottom.skeleton.append(x3dnode)
+                                    print(f"WARNING7, {type(bottom)} and {type(x3dnode)}")
                                 else:
+                                    print(f"WARNING6, {type(bottom)} and {type(x3dnode)}")
                                     bottom.children.append(x3dnode)
                             #print_console('INFO', f"skinCoord point found: {point}")
                             #print_console('INFO', f"skinCoord DEF: {DEFnodes}")

@@ -561,7 +561,14 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
                             axis_angle[rotind] = round(keyframe.co[1], 5)
                     rotind = rotind + 1
                 elif fc.data_path == 'rotation_euler':
-                    print(f"Unhandled data_path {fc.data_path}")
+                    # print(f"Handled data_path {fc.data_path}")
+                    for keyframe in fc.keyframe_points:
+                        if frame == round(keyframe.co[0], 0):
+                            r = obj.rotation_euler
+                            # print(f"euler {r[:]}") # 0=X, 1=Y, 2=Z
+                            aa = r.to_quaternion().to_axis_angle()
+                            axis_angle = [aa[0][0],aa[0][1],aa[0][2],aa[1]]
+                            # print(f"axis angle {axis_angle[:]}") # 0=W, 1=X, 2=Y, 3=Z
                 else:
                     print(f"Unhandled data_path {fc.data_path}")
 

@@ -80,7 +80,7 @@ SEGMENTS = [
 "r_carpal_distal_phalanx_2",
 "r_carpal_distal_phalanx_3",
 "r_carpal_distal_phalanx_4",
-"r_carpal_distal_phalanx_5"
+"r_carpal_distal_phalanx_5",
 "r_carpal_middle_phalanx_2",
 "r_carpal_middle_phalanx_3",
 "r_carpal_middle_phalanx_4",
