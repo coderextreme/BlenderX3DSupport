@@ -2026,6 +2026,69 @@ def export(context, x3dv_export_settings):
                 after.append(i)
         return after
 
+    def b2xLineSet(curve_obj, depsgraph):
+        curve_data = curve_obj.data
+        obj_for_mesh = curve_obj.evaluated_get(depsgraph)
+        try:
+            mesh = obj_for_mesh.to_mesh()
+        except:
+            mesh = None
+
+        #is_col = mesh.vertex_colors.active
+        #mesh_loops_col = mesh.vertex_colors.active.data if is_col else None
+        #colors = None
+        #color = None
+
+        #if is_col:
+        #    colors = [None] * len(mesh.vertices)
+        #    for i in line(mesh.vertices):
+        #        color = mesh_loops_col[i].color[:]
+        #        print(f"Point {i} color: {color}")
+        #        colors.extend(color)
+
+        if "Color" in curve_data.attributes:
+            color_attribute = curve_data.attributes["Color"]
+            for i in range(len(color_attribute.data)):
+                color = color_attribute.data[i].color
+                print(f"Point {i} color: {color}")
+
+        # Get curve points
+        points = []
+        for spline in curve_data.splines:
+            if spline.type == 'BEZIER':
+                points.extend([p.co for p in spline.bezier_points])
+            else:
+                points.extend([p.co for p in spline.points])
+
+        # Convert points to X3D format
+        x3d_points = MFVec3f([round_array([p.x, p.y, p.z]) for p in points])
+
+        # compute static colors
+        if curve_obj.name.endswith("Segment"):
+            if not colors:
+                colors = [[1, 0, 0], [1, 0, 0]]
+        elif "-to-" in curve_obj.name:
+            if not colors:
+                colors = [[0, 1, 0], [0, 1, 0]]
+        else:
+            if not colors:
+                colors = [[0, 0, 1], [0, 0, 1]]
+        colorstr = "COLOR_"+('_'.join(['_'.join(map(str, sublist)) for sublist in colors]))
+        color = Color(color=MFVec3f(colors))
+        setUSEDEF("", colorstr, color)
+
+
+        # Create X3D LineSet structure
+        node = Shape(
+                geometry=LineSet(
+                    vertexCount=len(points),
+                    coord=Coordinate(point=x3d_points),
+                    color=color
+                )
+            )
+        setUSEDEF("", curve_obj.name, node)
+        print(f"curve_obj.name {curve_obj.name} {node.DEF}")
+        return node
     # -------------------------------------------------------------------------
     # blender to x3d Object Hierarchy (recursively called)
     # -------------------------------------------------------------------------
@@ -2053,20 +2116,20 @@ def export(context, x3dv_export_settings):
             isJoint = [j for j in JOINTS if obj_main_id.endswith(j)]
             if isJoint:
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimJoint2")
-                print(f"Count Joint {obj_main_id}")
+                # print(f"Count Joint {obj_main_id}")
             elif isSite:
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimSite")
-                print(f"Count Site {obj_main_id}")
+                # print(f"Count Site {obj_main_id}")
             elif isSegment:
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimSegment")
-                print(f"Count Segment {obj_main_id}")
+                # print(f"Count Segment {obj_main_id}")
             elif obj_main_id.endswith("humanoid") and obj_main.type == 'ARMATURE':
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimHumanoid")
-                print(f"Count Humanoid {obj_main_id}")
+                # print(f"Count Humanoid {obj_main_id}")
             else:
                 obj_main_id = suffix_str(obj_main_id, _TRANSFORM)
                 trans = b2xTransform(obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id)
-                print(f"Count EMPTY {obj_main_id}")
+                # print(f"Count EMPTY {obj_main_id}")
             top.children.append(trans)
             bottom = trans
         # Set here just incase we dont enter the loop below.
@@ -2105,7 +2168,13 @@ def export(context, x3dv_export_settings):
                     bottom.children.append(node)
 
             elif obj_type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
-                if (obj_type != 'MESH') or (export_settings['x3dv_use_mesh_modifiers'] and obj.is_modified(scene, 'PREVIEW')):
+                if obj_type == 'CURVE':
+                    print(f"Object type {obj_type}")
+                    node = b2xLineSet(obj, depsgraph)
+                    me = None # Not really
+                    if node != None:
+                        bottom.children.append(node)
+                elif (obj_type != 'MESH') or (export_settings['x3dv_use_mesh_modifiers'] and obj.is_modified(scene, 'PREVIEW')):
                     obj_for_mesh = obj.evaluated_get(depsgraph) if export_settings['x3dv_use_mesh_modifiers'] else obj
                     try:
                         me = obj_for_mesh.to_mesh()
@@ -2211,8 +2280,8 @@ def export(context, x3dv_export_settings):
                                 # attach skin Humanoid.
                                 if node:
                                     node.skin.append(x3dnode)
-                                if botttom:
-                                    botttom.skin.append(x3dnode)
+                                if bottom:
+                                    bottom.skin.append(x3dnode)
                                 point = b2xFindSkinCoordPoint(x3dnode)
                                 DEFnodes = b2xDEFedCoordinates(x3dnode)
                             else:
