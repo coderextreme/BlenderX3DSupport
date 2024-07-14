@@ -26,7 +26,7 @@ import sys
 import os
 import random
 
-from x3dv import *
+from io_scene_x3dv.blender.com.x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
 
