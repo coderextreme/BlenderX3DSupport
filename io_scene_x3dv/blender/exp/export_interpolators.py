@@ -64,16 +64,60 @@ def substitute(subs):
         pass
     return subs.replace(":", "_").replace(" ", "_").replace(".", "_")
 
-uuid_defs = {}                   # defs
+#uuid_defs = {}                   # defs
+#
+#def name_used(DEF):
+#    if DEF in uuid_defs.keys():
+#        uuid_defs[DEF] = uuid_defs[DEF] + 1
+#        return True
+#    else:
+#        uuid_defs.update({DEF: 1})
+#        return False
 
-def name_used(DEF):
-    if DEF in uuid_defs.keys():
-        uuid_defs[DEF] = uuid_defs[DEF] + 1
-        return True
-    else:
-        uuid_defs.update({DEF: 1})
-        return False
 
+#def setUSEDEF(prefix, name, node):
+#    if name is None:
+#        name = ""
+#    if name.startswith(prefix):
+#        name = name[len(prefix):]
+#    node.name = substitute(name)
+#    pname = prefix+substitute(name)
+#    if name_used(pname):
+#        if name == "SiteShape":
+#            # create a new empty copy for USE
+#            node = type(node)(USE=pname)
+#        else:
+#            node.USE = pname
+#    else:
+#        node.DEF = pname
+#
+#    return node
+
+class NameUsed:
+    def __init__(self):
+        self.reset()
+
+    def lookup_center(self, DEF):
+        return self.uuid_defs[DEF].center
+
+    def is_used(self, DEF, node):
+        if DEF in self.uuid_defs.keys() and type(node) == type(self.uuid_defs[DEF]):
+            #if isinstance(node, HAnimJoint) and hasattr(node, "center") and node.center:
+            #    self.uuid_defs[DEF].center = node.center
+            #    print(f"Node uuid {DEF} center {self.uuid_defs[DEF].center}")
+            if isinstance(self.uuid_defs[DEF], HAnimJoint) and hasattr( self.uuid_defs[DEF].center, "center") and self.uuid_defs[DEF].center:
+                node.center = self.uuid_defs[DEF].center
+                print(f"Node {DEF} center {node.center}")
+        else:
+            self.uuid_defs[DEF] = node
+            if isinstance(node, HAnimJoint) and hasattr(node, "center") and node.center:
+                self.uuid_defs[DEF].center = node.center
+                print(f"Node update {node.DEF} center {node.center} uuid def {self.uuid_defs[DEF].center}")
+
+    def  reset(self):
+        self.uuid_defs = {}
+
+name_used = NameUsed()
 
 def setUSEDEF(prefix, name, node):
     if name is None:
@@ -82,15 +126,8 @@ def setUSEDEF(prefix, name, node):
         name = name[len(prefix):]
     node.name = substitute(name)
     pname = prefix+substitute(name)
-    if name_used(pname):
-        if name == "SiteShape":
-            # create a new empty copy for USE
-            node = type(node)(USE=pname)
-        else:
-            node.USE = pname
-    else:
-        node.DEF = pname
-
+    node.DEF = pname
+    name_used.is_used(pname, node)
     return node
 
 def write_interpolators(obj, name, prefix):  # pass armature object
@@ -294,7 +331,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     for dbone in bones_decorated:
         bone = armature.pose.bones[b]
         # print(f"Creating interpolators for {bone.name}")
-        pbonename = substitute(bone.name)
+        pbonename = prefix+substitute(bone.name)
         if bone.name == 'humanoid_root':
             pibonename = substitute(bone.name)+"_PI"
             posInterp = PositionInterpolator()
@@ -437,12 +474,12 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
 
     animation_data = obj.animation_data
     nodes = []
+    scene = bpy.context.scene
+    frame_current = scene.frame_current
     if animation_data:
         name = obj_main_id
-        scene = bpy.context.scene
         frame_start = scene.frame_start
         frame_end = scene.frame_end
-        frame_current = scene.frame_current
         frame_count = frame_end - frame_start + 1
         frame_duration = (1.0 / (scene.render.fps / scene.render.fps_base))
 
@@ -454,7 +491,7 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
         orientationInterpolators = []
         positionRoutes = []
         orientationRoutes = []
-        # print(f"Creating interpolators for {obj_main_id}")
+        print(f"Creating interpolators for {obj_main_id}")
         pobjname = substitute(obj_main_id)
 
         posInterp = PositionInterpolator()
@@ -629,8 +666,10 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
         keyframe_time = keyframe_time + keyframe_length
 
         if pifound:
+            print(f"found {len(positionRoutes)} position routes")
             nodes.append(positionRoutes[:])
         if oifound:
+            print(f"found {len(orientationRoutes)} orientation routes")
             nodes.append(orientationRoutes[:])
 
         # print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")

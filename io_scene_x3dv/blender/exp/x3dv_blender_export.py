@@ -64,13 +64,13 @@ class NameUsed:
             #    self.uuid_defs[DEF].center = node.center
             #    print(f"Node uuid {DEF} center {self.uuid_defs[DEF].center}")
             if isinstance(self.uuid_defs[DEF], HAnimJoint) and hasattr( self.uuid_defs[DEF].center, "center") and self.uuid_defs[DEF].center:
+                print(f"Node update {node.DEF} center {node.center} copied from uuid def {self.uuid_defs[DEF].center}")
                 node.center = self.uuid_defs[DEF].center
-                print(f"Node {DEF} center {node.center}")
         else:
             self.uuid_defs[DEF] = node
             if isinstance(node, HAnimJoint) and hasattr(node, "center") and node.center:
+                print(f"Node update {node.DEF} center {node.center} copied over uuid def {self.uuid_defs[DEF].center}")
                 self.uuid_defs[DEF].center = node.center
-                print(f"Node update {node.DEF} center {node.center} uuid def {self.uuid_defs[DEF].center}")
 
     def  reset(self):
         self.uuid_defs = {}
@@ -463,6 +463,8 @@ def export(context, x3dv_export_settings):
     """
     export_settings = x3dv_export_settings
     scene = context.scene
+    if not scene:
+        scene = bpy.context.scene
     view_layer = context.view_layer
     depsgraph = context.evaluated_depsgraph_get()
     global_matrix = mathutils.Matrix()
@@ -475,6 +477,7 @@ def export(context, x3dv_export_settings):
     from bpy_extras.io_utils import unique_name
     from xml.sax.saxutils import quoteattr, escape
 
+    HANIM_DEF_PREFIX = ''
     if export_settings['x3dv_hanim_prefix']:
         HANIM_DEF_PREFIX = export_settings['x3dv_hanim_prefix']
 
@@ -734,21 +737,10 @@ def export(context, x3dv_export_settings):
         
         return lite
 
-    def b2xInterpolatorsRoutes(obj, obj_main_id, matrix, prefix):
-        animation_data = obj.animation_data
-        interpolators = []
-        if animation_data:
-            print(f"Animating {obj_main_id}")
-            interpolators = write_obj_interpolators(obj, obj_main_id, matrix, prefix)
-        if not interpolators:
-            interpolators = []
-
-        return interpolators 
-
     def b2xHAnimNode(obj, matrix, name, tag, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
 
         match tag:
-              case     "HAnimJoint":
+              case     "HAnimJoint":  # For blender bones
                   #print(f"Exporting joint {tag} {obj.name}")
                   try:
                       #obj_matrix = obj.matrix_local
@@ -785,14 +777,19 @@ def export(context, x3dv_export_settings):
                   if skinCoordWeight is not None:
                      node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
-                  print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
+                  # print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
                   return node
-              case     "HAnimJoint2":
+              case     "HAnimJoint2": # for Blender empties
+                  obj_matrix = obj.matrix_local
+                  if obj_matrix is not None:
+                      loc, rot, sca = obj_matrix.decompose()
+                      rot = rot.to_axis_angle()
+                      rot = (*rot[0], rot[1])
                   node = HAnimJoint(
                      #translation=loc[:],
                      #rotation=rot,
                      #scale=sca[:],
-                     # center=obj.location[:],
+                     center=round_array_no_unit_scale(loc[:]),
                      children=[]
                      )
                   if skinCoordIndex is not None:
@@ -801,7 +798,7 @@ def export(context, x3dv_export_settings):
                      node.skinCoordWeight = round_array_no_unit_scale(skinCoordWeight)
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
                   node.center = name_used.lookup_center(node.DEF)
-                  print(f"Exporting2 type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE} {node.center}")
+                  # print(f"Exporting2 type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE} {node.center}")
                   return node
               case     "HAnimSegment":
                   # HAnimSegment is not a Transform
@@ -813,7 +810,7 @@ def export(context, x3dv_export_settings):
                   #    rot = (*rot[0], rot[1])
                   node = HAnimSegment(children=[])
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
-                  print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
+                  # print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
                   return node
               case     "HAnimSite":
                   #print(f"Exporting type {tag} {obj.type}")
@@ -824,12 +821,12 @@ def export(context, x3dv_export_settings):
                       rot = (*rot[0], rot[1])
                   node = HAnimSite(
                      translation=round_array_no_unit_scale(loc[:]),
-                     rotation=rot,
+                     rotation=round_array(rot),
                      scale=sca[:],
                      children=[]
                      )
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
-                  print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
+                  # print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
                   return node
               case     "HAnimHumanoid":
                   #print(f"Exporting type {tag} {obj.type}")
@@ -838,11 +835,11 @@ def export(context, x3dv_export_settings):
                       node = HAnimHumanoid( #motionsEnabled=MFBool([random.choice([True]) for i in range(len(motions))]),
                                            motions=motions)
                       setUSEDEF(HANIM_DEF_PREFIX, name, node)
-                      print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
+                      # print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
                   else:
                       node = HAnimHumanoid()
                       setUSEDEF(HANIM_DEF_PREFIX, name, node)
-                      print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
+                      # print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
                   return node
               case     "HAnimInterpolators":
                   #print(f"Exporting rest interpolators of {tag} {obj.type}")
@@ -1033,10 +1030,13 @@ def export(context, x3dv_export_settings):
                                 displacerCoordInfo[group_bone]['weights'].append(group.weight)
         humanoid.skeleton = [b2xJoint(obj_main, armature, armature_matrix, joint_lookup, segment_lookup, armature, skinCoordInfo, displacerCoordInfo)]
         # joints should be printed after skeleton in x3d.py. That's why I've picked out skeleton in x3d.py
+        prefix = HANIM_DEF_PREFIX
         for joint in armature.data.bones:
-            node = HAnimJoint()
-            node.USE = substitute(joint.name)
-            node.name = None
+            joint_name = joint.name
+            if joint_name.startswith(prefix):
+                joint_name = joint_name[len(prefix):]
+            pname = prefix+substitute(joint_name)
+            node = HAnimJoint(USE=pname)
             humanoid.joints.append(node)
         scale = 1 # getscenescale(scene)
         unit_settings = scene.unit_settings
@@ -1247,10 +1247,10 @@ def export(context, x3dv_export_settings):
                             imt = ImageTexture()
                             setUSEDEF("", image_id, imt)
                         else:
-                            image_textures[obj]['used'] = True
-                            url = image_textures[obj]['url']
                             imt = ImageTexture()
-                            imt.url = url
+                            image_textures[obj]['used'] = True
+                            if hasattr(image_textures[obj], 'url'):
+                                imt.url = image_textures[obj]['url']
                             setUSEDEF("", image_id, imt)
                             # print_console('INFO', f"url {url}")
                         appr.texture = imt
@@ -1595,7 +1595,7 @@ def export(context, x3dv_export_settings):
             specColor = tuple((c + 0.001) / (1.25 / (material.specular_intensity + 0.001)) for c in material.specular_color)
             transp = 1.0 - material.diffuse_color[3]
 
-            mat.diffuseColor = clamp_color(diffuseColor)
+            mat.diffuseColor = round_array(clamp_color(diffuseColor))
             mat.specularColor = clamp_color(specColor)
             mat.emissiveColor = clamp_color(emitColor)
             mat.ambientIntensity = ambient
@@ -2013,16 +2013,18 @@ def export(context, x3dv_export_settings):
                     bg.topkUrl = basename
 
         return bg
-    def b2xInterpolatorsRoutesPrefix(obj, obj_main_id, obj_matrix, prefix):
+
+    def b2xInterpolators(obj_main, obj_main_id, obj_matrix, prefix):
         after = []
-        interpolators = b2xInterpolatorsRoutes(obj, obj_main_id, obj_matrix, prefix)
+
+        interpolators = write_obj_interpolators(obj_main, obj_main_id, obj_matrix, prefix)
         for i in interpolators:
             if isinstance(i, list):
-                # print_console('INFO', f"Writing {len(i)} sub-nodes for animations.")
+                print_console('INFO', f"Writing {len(i)} sub-nodes for animations.")
                 for j in i:
                     after.append(j)
             else:
-                # print_console('INFO', f"Writing {i} sub-node for animations.")
+                print_console('INFO', f"Writing {i} sub-node for animations.")
                 after.append(i)
         return after
 
@@ -2034,23 +2036,22 @@ def export(context, x3dv_export_settings):
         except:
             mesh = None
 
-        #is_col = mesh.vertex_colors.active
-        #mesh_loops_col = mesh.vertex_colors.active.data if is_col else None
-        #colors = None
-        #color = None
+        is_col = mesh.vertex_colors.active
+        mesh_loops_col = mesh.vertex_colors.active.data if is_col else None
+        colors = None
+        color = None
 
-        #if is_col:
-        #    colors = [None] * len(mesh.vertices)
-        #    for i in line(mesh.vertices):
-        #        color = mesh_loops_col[i].color[:]
-        #        print(f"Point {i} color: {color}")
-        #        colors.extend(color)
-
-        if "Color" in curve_data.attributes:
+        if hasattr(curve_data, "attributes") and "Color" in curve_data.attributes:
             color_attribute = curve_data.attributes["Color"]
             for i in range(len(color_attribute.data)):
                 color = color_attribute.data[i].color
                 print(f"Point {i} color: {color}")
+        elif is_col:
+            colors = [None] * len(mesh.vertices)
+            for i in line(mesh.vertices):
+                color = mesh_loops_col[i].color[:]
+                print(f"Point {i} color: {color}")
+                colors.extend(color)
 
         # Get curve points
         points = []
@@ -2064,10 +2065,10 @@ def export(context, x3dv_export_settings):
         x3d_points = MFVec3f([round_array([p.x, p.y, p.z]) for p in points])
 
         # compute static colors
-        if curve_obj.name.endswith("Segment"):
+        if curve_obj.name.find("Segment") >= 0:   # SkeletonColor
             if not colors:
                 colors = [[1, 0, 0], [1, 0, 0]]
-        elif "-to-" in curve_obj.name:
+        elif "-to-" in curve_obj.name:     # SiteColor
             if not colors:
                 colors = [[0, 1, 0], [0, 1, 0]]
         else:
@@ -2075,7 +2076,7 @@ def export(context, x3dv_export_settings):
                 colors = [[0, 0, 1], [0, 0, 1]]
         colorstr = "COLOR_"+('_'.join(['_'.join(map(str, sublist)) for sublist in colors]))
         color = Color(color=MFVec3f(colors))
-        setUSEDEF("", colorstr, color)
+        # setUSEDEF("", colorstr, color)
 
 
         # Create X3D LineSet structure
@@ -2086,8 +2087,7 @@ def export(context, x3dv_export_settings):
                     color=color
                 )
             )
-        setUSEDEF("", curve_obj.name, node)
-        print(f"curve_obj.name {curve_obj.name} {node.DEF}")
+        # setUSEDEF("", curve_obj.name, node)
         return node
     # -------------------------------------------------------------------------
     # blender to x3d Object Hierarchy (recursively called)
@@ -2097,6 +2097,8 @@ def export(context, x3dv_export_settings):
         world = scene.world
         derived_dict = create_derived_objects(depsgraph, [obj_main])
         derived = derived_dict.get(obj_main)
+
+        after = []
 
         top = Group()
         bottom = Group()
@@ -2123,18 +2125,17 @@ def export(context, x3dv_export_settings):
             elif isSegment:
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimSegment")
                 # print(f"Count Segment {obj_main_id}")
-            elif obj_main_id.endswith("humanoid") and obj_main.type == 'ARMATURE':
+            elif obj_main_id.endswith("humanoid") and (obj_main.type == 'ARMATURE' or obj_main.type == 'EMPTY'):
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimHumanoid")
                 # print(f"Count Humanoid {obj_main_id}")
             else:
-                obj_main_id = suffix_str(obj_main_id, _TRANSFORM)
-                trans = b2xTransform(obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id)
-                # print(f"Count EMPTY {obj_main_id}")
+                trans = Transform()
+                trans.DEF = obj_main.name
             top.children.append(trans)
             bottom = trans
+                # print(f"Count EMPTY {obj_main_id}")
         # Set here just incase we dont enter the loop below.
         is_dummy_tx = False
-        after = []
 
         for obj, obj_matrix in (() if derived is None else derived):
             obj_type = obj.type
@@ -2145,7 +2146,7 @@ def export(context, x3dv_export_settings):
                 obj_matrix = obj_main_matrix_world_invert @ obj_matrix
             else:
                 obj_matrix = global_matrix @ obj_matrix
-            after = after + b2xInterpolatorsRoutesPrefix(obj, obj_main_id, obj_matrix, "") # was "IN_"
+            after = after + b2xInterpolators(obj, obj_main_id, obj_matrix, "")  # prefix was "IN_"
 
             # H3D - use for writing a dummy transform parent
             is_dummy_tx = False
@@ -2169,7 +2170,6 @@ def export(context, x3dv_export_settings):
 
             elif obj_type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
                 if obj_type == 'CURVE':
-                    print(f"Object type {obj_type}")
                     node = b2xLineSet(obj, depsgraph)
                     me = None # Not really
                     if node != None:
@@ -2206,12 +2206,13 @@ def export(context, x3dv_export_settings):
                     # print_console('INFO', f"UV path is {png_path} did not call bpy.ops.uv.export_layout()")
                     # bpy.ops.uv.export_layout(filepath=png_path, mode='PNG', size=(4096, 4096), opacity=1)
                     if obj in image_textures:
-                        image_textures[obj]['url'].append(png_url)
+                        #image_textures[obj]['url'].append(png_url)
+                        pass
                         
                     else:
                         image_textures[obj] = {}
                         image_textures[obj]['used'] = False
-                        image_textures[obj]['url'] = [png_url]
+                        #image_textures[obj]['url'] = [png_url]
                 try:
                     bpy.ops.object.mode_set(mode="OBJECT")
                     bpy.ops.object.select_all(action='TOGGLE')
@@ -2259,10 +2260,9 @@ def export(context, x3dv_export_settings):
             elif obj_type == 'ARMATURE':
                 data = obj.data
                 # TODO add flag for adding armature and bones
-                # node = 
-                b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
+                node = b2xArmature(obj, obj_main, obj_children, obj_matrix, data, world)
                 # don't save the results in the scenegraph
-                # top.children.append(node)
+                top.children.append(node)
                 #node = trans
                 prior_after = after
                 DEFnodes = []
@@ -2280,14 +2280,14 @@ def export(context, x3dv_export_settings):
                                 # attach skin Humanoid.
                                 if node:
                                     node.skin.append(x3dnode)
-                                if bottom:
+                                if bottom and hasattr(bottom, "skin"):
                                     bottom.skin.append(x3dnode)
                                 point = b2xFindSkinCoordPoint(x3dnode)
                                 DEFnodes = b2xDEFedCoordinates(x3dnode)
                             else:
                                 print(f"WARNING, attempting to use children in {type(bottom)} for field type {type(x3dnode)}")
                                 if isinstance(x3dnode, HAnimJoint) and isinstance(node, HAnimHumanoid):
-                                    bottom.skeleton.append(x3dnode) # skip joints and other fields for now
+                                    node.skeleton.append(x3dnode) # skip joints and other fields for now
                                 elif  isinstance(bottom, HAnimHumanoid) and isinstance(x3dnode, HAnimHumanoid):
                                     print(f"WARNING3, attempting to use children in {type(bottom)} for field type {type(x3dnode)}")
                                 elif isinstance(x3dnode, HAnimJoint) and isinstance(bottom, HAnimHumanoid):
@@ -2297,7 +2297,7 @@ def export(context, x3dv_export_settings):
                                         bottom.skeleton.append(x3dnode)
                                     print(f"WARNING7, {type(bottom)} and {type(x3dnode)}")
                                 else:
-                                    print(f"WARNING6, {type(bottom)} and {type(x3dnode)}")
+                                    # print(f"WARNING6, {type(bottom)} and {type(x3dnode)}")
                                     bottom.children.append(x3dnode)
                             #print_console('INFO', f"skinCoord point found: {point}")
                             #print_console('INFO', f"skinCoord DEF: {DEFnodes}")
@@ -2339,7 +2339,23 @@ def export(context, x3dv_export_settings):
                     if x3dnodelist:
                         for x3dnode in x3dnodelist:
                             # print(f"looking for sites in {type(x3dnode)}")
-                            bottom.children.append(x3dnode)
+                            # #bottom.children.append(x3dnode)
+                            if isinstance(x3dnode, HAnimJoint) and isinstance(bottom, HAnimHumanoid):
+                                if x3dnode.USE:
+                                    bottom.joints.append(x3dnode)
+                                else:
+                                    bottom.skeleton.append(x3dnode)
+                            elif isinstance(x3dnode, HAnimSegment) and isinstance(bottom, HAnimHumanoid) and x3dnode.USE:
+                                    bottom.segments.append(x3dnode)
+                            elif isinstance(x3dnode, HAnimSite) and isinstance(bottom, HAnimHumanoid) and x3dnode.USE:
+                                    bottom.sites.append(x3dnode)
+                            elif isinstance(x3dnode, Shape) and isinstance(bottom, HAnimHumanoid):
+                                    bottom.skin.append(x3dnode)
+                            elif isinstance(x3dnode, Coordinate) and isinstance(bottom, HAnimHumanoid):
+                                    bottom.skinCoord.append(x3dnode)
+                            else:
+                                # print(f"WARNING5, {type(bottom)} and {type(x3dnode)}")
+                                bottom.children.append(x3dnode)
                     if after:
                         for a in after:
                             prior_after.append(a)
@@ -2455,6 +2471,7 @@ def export(context, x3dv_export_settings):
                 print_console('INFO', f"appending {len(after)} sub-nodes for scene children.")
                 for a in after:
                     x3dmodel.Scene.children.append(a)
+
         # swap_USEbeforeDEF(node=x3dmodel.Scene)
         USEdict = {}
         DEFdict = {}
