@@ -637,6 +637,13 @@ def export(context, x3dv_export_settings):
         # default ni.avatarSize = [0.25, 1.6, 0.75]
         return ni
 
+    def b2xText(text_obj):
+        node = Shape(
+              geometry=Text(DEF=text_obj.data.name,string=text_obj.data.body.split("\n"),
+                fontStyle=FontStyle(size=round((text_obj.scale[0] + text_obj.scale[1] + text_obj.scale[2])/3, 5), justify=["MIDDLE","MIDDLE"])))
+                # fontStyle=FontStyle(justify=["MIDDLE","MIDDLE"])))
+        return node
+
     def b2xTransform(matrix, def_id):
 
         loc, rot, sca = matrix.decompose()
@@ -780,7 +787,7 @@ def export(context, x3dv_export_settings):
                   # print(f"Exporting type {tag} {name} DEF={node.DEF} name={node.name} USE={node.USE}")
                   return node
               case     "HAnimJoint2": # for Blender empties
-                  obj_matrix = obj.matrix_local
+                  obj_matrix = obj.matrix_world
                   if obj_matrix is not None:
                       loc, rot, sca = obj_matrix.decompose()
                       rot = rot.to_axis_angle()
@@ -814,15 +821,16 @@ def export(context, x3dv_export_settings):
                   return node
               case     "HAnimSite":
                   #print(f"Exporting type {tag} {obj.type}")
-                  obj_matrix = obj.matrix_local
+                  obj_matrix = obj.matrix_world
                   if obj_matrix is not None:
                       loc, rot, sca = obj_matrix.decompose()
                       rot = rot.to_axis_angle()
                       rot = (*rot[0], rot[1])
                   node = HAnimSite(
-                     translation=round_array_no_unit_scale(loc[:]),
-                     rotation=round_array(rot),
-                     scale=sca[:],
+                     # translation=round_array_no_unit_scale(loc[:]),
+                     translation=round_array(loc[:]),
+                     # rotation=round_array(rot),
+                     # scale=round_array_no_unit_scale(sca[:]),
                      children=[]
                      )
                   setUSEDEF(HANIM_DEF_PREFIX, name, node)
@@ -2113,7 +2121,7 @@ def export(context, x3dv_export_settings):
 
             obj_main_id = unique_name(obj_main, obj_main.name, uuid_cache_object, clean_func=clean_def, sep="_")
 
-            isSite = [si for si in SITES if obj_main_id.endswith(si)]
+            isSite = [si for si in SITES if obj_main_id.endswith(si) and not obj_main_id.startswith("TouchSensor") ]
             isSegment = [se for se in SEGMENTS if obj_main_id.endswith(se)]
             isJoint = [j for j in JOINTS if obj_main_id.endswith(j)]
             if isJoint:
@@ -2128,9 +2136,14 @@ def export(context, x3dv_export_settings):
             elif obj_main_id.endswith("humanoid") and (obj_main.type == 'ARMATURE' or obj_main.type == 'EMPTY'):
                 trans = b2xHAnimNode(obj_main, obj_main_matrix if obj_main_parent else global_matrix @ obj_main_matrix, obj_main_id, "HAnimHumanoid")
                 # print(f"Count Humanoid {obj_main_id}")
+            elif obj_main_id.startswith("Billboard") and (obj_main.type == 'EMPTY'):
+                trans = Billboard()
+            elif obj_main_id.startswith("TouchSensor") and (obj_main.type == 'EMPTY'):
+                trans = TouchSensor(description=obj_main.name[12:])
             else:
                 trans = Transform()
-                trans.DEF = obj_main.name
+                if not obj_main.name.startswith("Text"):
+                    trans.DEF = obj_main.name
             top.children.append(trans)
             bottom = trans
                 # print(f"Count EMPTY {obj_main_id}")
@@ -2171,6 +2184,11 @@ def export(context, x3dv_export_settings):
             elif obj_type in {'MESH', 'CURVE', 'SURFACE', 'FONT'}:
                 if obj_type == 'CURVE':
                     node = b2xLineSet(obj, depsgraph)
+                    me = None # Not really
+                    if node != None:
+                        bottom.children.append(node)
+                elif obj_type == 'FONT':
+                    node = b2xText(obj)
                     me = None # Not really
                     if node != None:
                         bottom.children.append(node)
