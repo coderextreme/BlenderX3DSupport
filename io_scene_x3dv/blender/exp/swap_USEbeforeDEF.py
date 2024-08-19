@@ -1,4 +1,4 @@
-from x3dv import *
+from io_scene_x3dv.blender.com.x3dv import *
 import copy
 
 USEdict = {}
