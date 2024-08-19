@@ -3472,6 +3472,9 @@ def importViewpoint(bpycollection, node, ancestry, global_matrix):
     position = node.getFieldAsFloatTuple('position', (0.0, 0.0, 0.0), ancestry)
     description = node.getFieldAsString('description', '', ancestry)
 
+    if name == 'Viewpoint':
+        name = description.replace(' ', '_')
+
     bpycam = bpy.data.cameras.new(name)
 
     bpycam.angle = fieldOfView
