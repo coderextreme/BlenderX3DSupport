@@ -64,12 +64,12 @@ class NameUsed:
             #    self.uuid_defs[DEF].center = node.center
             #    print(f"Node uuid {DEF} center {self.uuid_defs[DEF].center}")
             if isinstance(self.uuid_defs[DEF], HAnimJoint) and hasattr( self.uuid_defs[DEF].center, "center") and self.uuid_defs[DEF].center:
-                print(f"Node update {node.DEF} center {node.center} copied from uuid def {self.uuid_defs[DEF].center}")
+                # print(f"Node update {node.DEF} center {node.center} copied from uuid def {self.uuid_defs[DEF].center}")
                 node.center = self.uuid_defs[DEF].center
         else:
             self.uuid_defs[DEF] = node
             if isinstance(node, HAnimJoint) and hasattr(node, "center") and node.center:
-                print(f"Node update {node.DEF} center {node.center} copied over uuid def {self.uuid_defs[DEF].center}")
+                # print(f"Node update {node.DEF} center {node.center} copied over uuid def {self.uuid_defs[DEF].center}")
                 self.uuid_defs[DEF].center = node.center
 
     def  reset(self):
@@ -608,6 +608,7 @@ def export(context, x3dv_export_settings):
 
         vp = Viewpoint()
         vp.DEF = view_id
+        print(f"Camera location {loc[:]}")
         vp.position = (loc[:])
         vp.orientation = rot
         vp.fieldOfView = obj.data.angle
@@ -708,7 +709,10 @@ def export(context, x3dv_export_settings):
 
         intensity = min(light.energy / 1.75, 1.0)
 
-        orientation = matrix_direction_neg_z(matrix)
+        # orientation = matrix_direction_neg_z(matrix)
+        loc, orientation, sca = matrix.decompose()
+        orientation = orientation.to_axis_angle()
+        orientation = (*orientation[0], orientation[1])
 
 
         lite = DirectionalLight(DEF=light_id)
@@ -717,7 +721,8 @@ def export(context, x3dv_export_settings):
         lite.on = True
         lite.global_ = True #the way we export wrapping in a transform means to get light we need it global
         lite.color = clamp_color(light.color)
-        lite.direction = orientation
+        lite.direction = orientation[:]
+        print(f"Orientation {orientation}")
         return lite
 
     def b2xPointLight( obj, matrix, light, world):
@@ -2038,28 +2043,36 @@ def export(context, x3dv_export_settings):
 
     def b2xLineSet(curve_obj, depsgraph):
         curve_data = curve_obj.data
+        print(f"materials {curve_data.materials}")
+        for mat in curve_data.materials:
+            print(f"material {mat.diffuse_color}")
         obj_for_mesh = curve_obj.evaluated_get(depsgraph)
         try:
             mesh = obj_for_mesh.to_mesh()
         except:
             mesh = None
 
-        is_col = mesh.vertex_colors.active
-        mesh_loops_col = mesh.vertex_colors.active.data if is_col else None
-        colors = None
+        is_col = mesh.color_attributes.active
+        mesh_loops_col = mesh.color_attributes if is_col else None
+        for color_attr in mesh_loops_col:
+            print(color_attr.name)
+        print(f"is_col {is_col} mesh {mesh} mesh_loops_col {mesh_loops_col}")
+        colors = []
         color = None
 
         if hasattr(curve_data, "attributes") and "Color" in curve_data.attributes:
             color_attribute = curve_data.attributes["Color"]
+            print(f"color_attribute: {color_attribute}")
             for i in range(len(color_attribute.data)):
                 color = color_attribute.data[i].color
                 print(f"Point {i} color: {color}")
+                colors.append(color)
+            print(f"colors from curve_data: {colors}")
         elif is_col:
-            colors = [None] * len(mesh.vertices)
-            for i in line(mesh.vertices):
-                color = mesh_loops_col[i].color[:]
-                print(f"Point {i} color: {color}")
-                colors.extend(color)
+            for mat in curve_data.materials:
+                print(f"material {mat.diffuse_color}")
+                colors.append(mat.diffuse_color)
+            print(f"colors from mesh_loops: {colors}")
 
         # Get curve points
         points = []
@@ -2075,15 +2088,15 @@ def export(context, x3dv_export_settings):
         # compute static colors
         if curve_obj.name.find("Segment") >= 0:   # SkeletonColor
             if not colors:
-                colors = [[1, 0, 0], [1, 0, 0]]
+                colors = [[1, 0, 0, 1], [1, 0, 0, 1]]
         elif "-to-" in curve_obj.name:     # SiteColor
             if not colors:
-                colors = [[0, 1, 0], [0, 1, 0]]
+                colors = [[0, 1, 0, 1], [0, 1, 0, 1]]
         else:
             if not colors:
-                colors = [[0, 0, 1], [0, 0, 1]]
+                colors = [[0, 0, 1, 1], [0, 0, 1, 1]]
         colorstr = "COLOR_"+('_'.join(['_'.join(map(str, sublist)) for sublist in colors]))
-        color = Color(color=MFVec3f(colors))
+        color = ColorRGBA(color=MFColorRGBA(colors))
         # setUSEDEF("", colorstr, color)
 
 
@@ -2153,8 +2166,8 @@ def export(context, x3dv_export_settings):
         for obj, obj_matrix in (() if derived is None else derived):
             obj_type = obj.type
 
-            #if export_settings['x3dv_use_hierarchy']:
-            if True:
+            if export_settings['x3dv_use_hierarchy']:
+            #if True:
                 # make transform node relative
                 obj_matrix = obj_main_matrix_world_invert @ obj_matrix
             else:
