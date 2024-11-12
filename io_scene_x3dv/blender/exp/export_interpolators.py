@@ -30,6 +30,9 @@ from io_scene_x3dv.blender.com.x3dv import *
 from .RoundArray import round_array, round_array_no_unit_scale
 from io_scene_x3dv.io.com.x3dv_io_debug import print_console, print_newline
 
+
+DEBUG = 0
+
 bvh2HAnim = {
 "LeftUpLeg" : "l_thigh",
 "LeftLeg" : "l_calf",
@@ -57,7 +60,7 @@ bvh2HAnim = {
 
 def substitute(subs):
     if subs in bvh2HAnim:
-        print(f"converting {subs} to {bvh2HAnim[subs]}")
+        # print(f"converting {subs} to {bvh2HAnim[subs]}")
         subs = bvh2HAnim[subs]
     else:
         #print(f"{subs} not found")
@@ -107,12 +110,12 @@ class NameUsed:
             #    print(f"Node uuid {DEF} center {self.uuid_defs[DEF].center}")
             if isinstance(self.uuid_defs[DEF], HAnimJoint) and hasattr( self.uuid_defs[DEF].center, "center") and self.uuid_defs[DEF].center:
                 node.center = self.uuid_defs[DEF].center
-                print(f"Node {DEF} center {node.center}")
+                # print(f"Node {DEF} center {node.center}")
         else:
             self.uuid_defs[DEF] = node
             if isinstance(node, HAnimJoint) and hasattr(node, "center") and node.center:
                 self.uuid_defs[DEF].center = node.center
-                print(f"Node update {node.DEF} center {node.center} uuid def {self.uuid_defs[DEF].center}")
+                # print(f"Node update {node.DEF} center {node.center} uuid def {self.uuid_defs[DEF].center}")
 
     def  reset(self):
         self.uuid_defs = {}
@@ -202,7 +205,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
         key = children[None][0]
         serialized_names.append(key)
 
-        print_console('INFO', f"writing only key {key}")
+        # print_console('INFO', f"writing only key {key}")
         write_recursive_nodes(key)
 
     else:
@@ -491,7 +494,7 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
         orientationInterpolators = []
         positionRoutes = []
         orientationRoutes = []
-        print(f"Creating interpolators for {obj_main_id}")
+        # print(f"Creating interpolators for {obj_main_id}")
         pobjname = substitute(obj_main_id)
 
         posInterp = PositionInterpolator()
@@ -577,27 +580,27 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
             axis_angle = [ None, None, None, None ]
             obj.rotation_mode = 'AXIS_ANGLE'
             for fc in fcurves:
-                if fc.data_path == 'location':
+                if str(fc.data_path).endswith('location'):
                     for keyframe in fc.keyframe_points:
                         #print(f"frame {frame} keyframe {round(keyframe.co[0], 0)} time {keyframe_time} axis {locind}")
                         if frame == round(keyframe.co[0], 0) and locind < 3:
                             # print(f"keyframe {keyframe}")
-                            print(f"frame {frame} index {locind}")
-                            print(f"data path {fc.data_path} axis {locarr[locind]}")
-                            print(f"keyframe.co[0] frame {keyframe.co[0]}")
-                            print(f"keyframe.co[1] value {keyframe.co[1]}")
+                            # print(f"frame {frame} index {locind}")
+                            # print(f"data path {fc.data_path} axis {locarr[locind]}")
+                            # print(f"keyframe.co[0] frame {keyframe.co[0]}")
+                            # print(f"keyframe.co[1] value {keyframe.co[1]}")
                             location[locind] = round(keyframe.co[1], 5)
                     locind = locind + 1
-                elif fc.data_path.endswith('rotation_axis_angle'):
+                elif str(fc.data_path).endswith('rotation_axis_angle'):
                     # print(f"Unhandled data_path {fc.data_path}")
                     for keyframe in fc.keyframe_points:
                         #print(f"frame {frame} {round(keyframe.co[0], 0)} {keyframe_time} axis {rotind}")
                         if frame == round(keyframe.co[0], 0) and rotind < 4:
-                            print(f"frame {frame} index {rotind}")
+                            # print(f"frame {frame} index {rotind}")
                             print(f"keyframe.co[1] value {keyframe.co[1]}")
                             axis_angle[rotind] = round(keyframe.co[1], 5)
                     rotind = rotind + 1
-                elif fc.data_path == 'rotation_euler':
+                elif str(fc.data_path).endswith('rotation_euler'):
                     # print(f"Handled data_path {fc.data_path}")
                     for keyframe in fc.keyframe_points:
                         if frame == round(keyframe.co[0], 0):
@@ -606,8 +609,15 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
                             aa = r.to_quaternion().to_axis_angle()
                             axis_angle = [aa[0][0],aa[0][1],aa[0][2],aa[1]]
                             # print(f"axis angle {axis_angle[:]}") # 0=W, 1=X, 2=Y, 3=Z
+                elif str(fc.data_path).endswith('scale'):
+                    if DEBUG:
+                        print(f"Unhandled data_path {fc.data_path}, {fc.data_path.endswith('location')}, {fc.data_path.endswith('rotation_axis_angle')}, {fc.data_path.endswith('rotation_euler')}")
+
+                elif str(fc.data_path).endswith('rotation_quaternion'):
+                    if DEBUG:
+                        print(f"Unhandled data_path {fc.data_path}, {fc.data_path.endswith('location')}, {fc.data_path.endswith('rotation_axis_angle')}, {fc.data_path.endswith('rotation_euler')}")
                 else:
-                    print(f"Unhandled data_path {fc.data_path}")
+                    print(f"Unhandled data_path {fc.data_path}, {fc.data_path.endswith('location')}, {fc.data_path.endswith('rotation_axis_angle')}, {fc.data_path.endswith('rotation_euler')}")
 
             if location[0] or location[1] or location[2]:
                 positionInterpolators[0].key.append(round(frame/250, 5))
