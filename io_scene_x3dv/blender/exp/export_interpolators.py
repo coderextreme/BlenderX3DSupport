@@ -317,9 +317,9 @@ def write_interpolators(obj, name, prefix):  # pass armature object
 
     key_divider = (frame_count - 1) * frame_count / scene.render.fps 
 
-    print_console('INFO', "Frame count: %d\n" % frame_count)
-    print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
-    print_console('INFO', "Key divider: %.6f\n" % key_divider)
+    print_console('INFO', f"Frame count: {frame_count}")
+    print_console('INFO', f"Frame duration: {frame_duration}")
+    print_console('INFO', f"Key divider: {key_divider}")
     armature = obj
     numbones = len(armature.pose.bones)
     frame_range = [frame_current, frame_end]
@@ -351,6 +351,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
                 toNode=pbonename,
                 toField="translation"))
             root_found = True
+            # print(f"Appended 2 routes for {bone.name}")
 
         rotInterp = OrientationInterpolator()
         oibonename = substitute(bone.name)+"_OI"
@@ -366,6 +367,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
             fromField="value_changed",
             toNode=pbonename,
             toField="rotation"))
+        print(f"Appended 2 routes for {bone.name}")
         b += 1
     if not root_found:
         print_console('ERROR', "humanoid_root not found in bone data")
@@ -377,6 +379,7 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     skip = False
     for frame in range(frame_start, frame_end + 1):
         scene.frame_set(frame)
+        # print_console('INFO', f"frame {frame} write_interpolators")
 
         for dbone in bones_decorated:
             dbone.update_posedata()
@@ -429,14 +432,11 @@ def write_interpolators(obj, name, prefix):  # pass armature object
     scene.frame_set(frame_current)
     if not skip:
         print_console('INFO', "humanoid_root found in bone data")
-        nodes.append(positionInterpolators[:])
-    # print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
-    nodes.append(orientationInterpolators[:])
-
-    if not skip:
-        print_console('INFO', "humanoid_root found in bone data")
-        nodes.append(positionRoutes[:])
-    nodes.append(orientationRoutes[:])
+        nodes += positionInterpolators
+        nodes += positionRoutes
+    nodes += orientationInterpolators
+    nodes += orientationRoutes
+    print_console('INFO', f"write_interpolators generated {len(nodes)} nodes")
     return nodes
 
 def export_TimeSensor():
@@ -450,9 +450,9 @@ def export_TimeSensor():
 
         key_divider = (frame_count - 1) * frame_count / scene.render.fps 
 
-        print_console('INFO', "Frame count: %d\n" % frame_count)
-        print_console('INFO', "Frame duration: %.6f\n" % frame_duration)
-        print_console('INFO', "Key divider: %.6f\n" % key_divider)
+        print_console('INFO', "Frame count: %d" % frame_count)
+        print_console('INFO', "Frame duration: %.6f" % frame_duration)
+        print_console('INFO', "Key divider: %.6f" % key_divider)
 
         time_sensor = TimeSensor(cycleInterval=(frame_duration * (frame_end - frame_current)), loop=True, enabled=True)
         clock_name = substitute("X3DV_Clock")
@@ -512,6 +512,7 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
             fromField="value_changed",
             toNode=pobjname,
             toField="translation"))
+        print(f"Creating 2 ROUTEs for {obj_main_id}")
 
         rotInterp = OrientationInterpolator()
         oiobjname = ""+substitute(obj_main_id)+"RotInterp"
@@ -528,6 +529,7 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
             fromField="value_changed",
             toNode=pobjname,
             toField="rotation"))
+        print(f"Creating 2 ROUTEs for {obj_main_id}")
 
         lasttime = range(int(frame_range[0]), int(frame_range[1]) + 1)[-1]
         keyframe_length = (frame_range[1] - frame_range[0]) / bpy.context.scene.render.fps
@@ -536,6 +538,7 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
         skip = False
         for frame in range(frame_start - 1, frame_end + 1): # X3D starts at 0, Blender starts at 1
             scene.frame_set(frame)
+            # print_console('INFO', f"frame {frame} write_obj_interpolators")
 
             loc, rot, scale = matrix.decompose()
             rot = rot.to_axis_angle()
@@ -657,6 +660,7 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
             if len(pi.key) > 0 or len(pi.keyValue) > 0:
                 nodes.append(pi)
                 pifound = True
+            print(f"found {len(positionInterpolators)} position Interpolators")
 
         #if len(orientationInterpolators[0].key) == 2 and \
         #        orientationInterpolators[0].key[0] == 0.0 and orientationInterpolators[0].key[1] == 1.0 and \
@@ -671,17 +675,19 @@ def write_obj_interpolators(obj, obj_main_id, matrix, prefix):
             if len(oi.key) > 0 or len(oi.keyValue) > 0:
                 nodes.append(oi)
                 oifound = True
+            print(f"found {len(orientationInterpolators)} orientation Interpolators")
 
 
         keyframe_time = keyframe_time + keyframe_length
 
         if pifound:
             print(f"found {len(positionRoutes)} position routes")
-            nodes.append(positionRoutes[:])
+            nodes += positionRoutes
         if oifound:
             print(f"found {len(orientationRoutes)} orientation routes")
-            nodes.append(orientationRoutes[:])
+            nodes += orientationRoutes
 
-        # print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
+        print_console('INFO', f"Writing {len(orientationInterpolators)} interpolators {len(orientationRoutes)} routes.")
     scene.frame_set(frame_current)
+    print_console('INFO', f"write_obj_interpolators generated {len(nodes)} nodes")
     return nodes

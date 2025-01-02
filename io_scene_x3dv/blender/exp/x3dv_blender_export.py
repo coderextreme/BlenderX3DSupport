@@ -643,8 +643,8 @@ def export(context, x3dv_export_settings):
         rot = (*rot[0].normalized(), rot[1])
 
         # print_console('INFO',f"Camera location {loc[:]}")
-        x3d_obj.position = (loc[:])
-        x3d_obj.orientation = rot
+        x3d_obj.position = round_array(loc[:])
+        x3d_obj.orientation = round_array_no_unit_scale(rot)
         x3d_obj.fieldOfView = obj.data.angle
         return x3d_obj
 
@@ -725,7 +725,7 @@ def export(context, x3dv_export_settings):
 
         orientation = matrix_direction_neg_z(matrix)
 
-        location = matrix.to_translation()[:]
+        location = round_array(matrix.to_translation()[:])
 
         radius = lamp.cutoff_distance * math.cos(beamWidth)
         lite.radius = radius
@@ -764,7 +764,7 @@ def export(context, x3dv_export_settings):
         lite.on = True
         lite.global_ = True #the way we export wrapping in a transform means to get light we need it global
         lite.color = clamp_color(light.color)
-        lite.direction = orientation[:]
+        lite.direction = orientation[:-1]
         # print_console('INFO',f"Orientation {orientation}")
         return lite
 
@@ -781,7 +781,7 @@ def export(context, x3dv_export_settings):
             amb_intensity = 0.0
 
         intensity = min(light.energy / 1.75, 1.0)
-        location = matrix.to_translation()[:]
+        location = round_array(matrix.to_translation()[:])
 
         lite.radius = light.cutoff_distance
         lite.ambientIntensity = amb_intensity
@@ -792,6 +792,8 @@ def export(context, x3dv_export_settings):
         return lite
 
     def b2xHAnimNode(obj, matrix, name, tag, x3d_obj, segment_name=None, skinCoordIndex=None, skinCoordWeight=None, motions=None):
+        if (name == "root" or name == "humanoid_root") and tag == "HAnimHumanoid":
+            name = "humanoid"
         setUSEDEF(HANIM_DEF_PREFIX, name, x3d_obj)
 
         if tag == "HAnimJoint":  # For blender bones
@@ -883,6 +885,7 @@ def export(context, x3dv_export_settings):
                 except:
                     pass
                 children = write_interpolators(obj, name, "")
+                print_console('INFO',f"received {len(children)} interpolators in HAnimInterpolators")
             return children
         elif tag == "HAnimMotion":
             #print_console('INFO',f"Exporting bvh of {tag} {obj.type}")
@@ -938,7 +941,7 @@ def export(context, x3dv_export_settings):
                     joint_lookup[parent_name]['joint_children'].append(self)
 
     def b2xFindSkinCoordPoint(x3dnode):
-        point = MFVec3f()
+        point = None
         children = None
         typestr = type(x3dnode)
         # print_console('INFO', f"type {typestr}")
@@ -957,13 +960,14 @@ def export(context, x3dv_export_settings):
             children = [x3dnode.coord]
         elif acttype in [ "Coordinate" ]:
                 # print_console('INFO', f"Setting points {point} + {x3dnode.point}")
-                for p in x3dnode.point:
-                    point.append(p)
+                # think about concatenating
+                if point is None:
+                    point = x3dnode.point
         if children is not None:
             for child in children:
-                points = b2xFindSkinCoordPoint(child)
-                for p in points.value:
-                    point.append(p)
+                # think about concatenating
+                if point is None:
+                    point = b2xFindSkinCoordPoint(child)
         #print_console('INFO', f"Result point {point}")
         return point
 
@@ -1580,31 +1584,31 @@ def export(context, x3dv_export_settings):
 
         # look up material name, use it if available
         mat = Material()
-        setUSEDEF(MA_, material.name, mat)
-        if material.tag:
-            pass
+        #setUSEDEF(MA_, material.name, mat)
+        mat.DEF = MA_+material.name
+        #if material.tag:
+        #    pass
+        #else:
+        material.tag = True
+        emit = 0.0 #material.emit
+        ambient = 0.0 #material.ambient / 3.0
+        diffuseColor = material.diffuse_color[:3]
+        if world and 0:
+            ambiColor = ((material.ambient * 2.0) * world.ambient_color)[:]
         else:
-            material.tag = True
+            ambiColor = 0.0, 0.0, 0.0
 
-            emit = 0.0 #material.emit
-            ambient = 0.0 #material.ambient / 3.0
-            diffuseColor = material.diffuse_color[:3]
-            if world and 0:
-                ambiColor = ((material.ambient * 2.0) * world.ambient_color)[:]
-            else:
-                ambiColor = 0.0, 0.0, 0.0
+        emitColor = tuple(((c * emit) + ambiColor[i]) / 2.0 for i, c in enumerate(diffuseColor))
+        shininess = material.specular_intensity
+        specColor = tuple((c + 0.001) / (1.25 / (material.specular_intensity + 0.001)) for c in material.specular_color)
+        transp = 1.0 - material.diffuse_color[3]
 
-            emitColor = tuple(((c * emit) + ambiColor[i]) / 2.0 for i, c in enumerate(diffuseColor))
-            shininess = material.specular_intensity
-            specColor = tuple((c + 0.001) / (1.25 / (material.specular_intensity + 0.001)) for c in material.specular_color)
-            transp = 1.0 - material.diffuse_color[3]
-
-            mat.diffuseColor = round_array(clamp_color(diffuseColor))
-            mat.specularColor = clamp_color(specColor)
-            mat.emissiveColor = clamp_color(emitColor)
-            mat.ambientIntensity = ambient
-            mat.shininess = shininess
-            mat.transparency = transp
+        mat.diffuseColor = round_array(clamp_color(diffuseColor))
+        mat.specularColor = clamp_color(specColor)
+        mat.emissiveColor = clamp_color(emitColor)
+        mat.ambientIntensity = ambient
+        mat.shininess = shininess
+        mat.transparency = transp
         return mat
 
     """
@@ -2026,6 +2030,7 @@ def export(context, x3dv_export_settings):
 
     def b2xInterpolators(obj_main, obj_main_id, obj_matrix, prefix):
         interpolators = write_obj_interpolators(obj_main, obj_main_id, obj_matrix, prefix)
+        print_console('INFO',f"received {len(interpolators)} interpolators in b2xInterpolators")
         return interpolators
 
     def b2xShape(x3d_obj=None, geometry=None):
@@ -2119,7 +2124,7 @@ def export(context, x3dv_export_settings):
     def b2x_append(parent, x3dnodelist, depth=0):
         # print_console('INFO',f"b2x_append {parent} {x3dnodelist}")
         x3dnode = x3dnodelist
-        # print(f"{'    ' * depth} parent {type(parent)} x3dnode {type(x3dnode)}")
+        print(f"{'    ' * depth} parent {type(parent)} x3dnode {type(x3dnode)}")
         if x3dnode is None:
             print_console('WARNING',f"Tried to append null object to {parent}")
         elif isinstance(x3dnode, list):
@@ -2143,6 +2148,9 @@ def export(context, x3dv_export_settings):
             elif isinstance(x3dnode, Shape):
                 print_console('WARNING',f"Adding skin twice? {x3dnode}")
                 parent.skin.append(x3dnode)
+                DEFnodes = b2xDEFedCoordinates(x3dnode)
+                USEname = DEFnodes[0].DEF
+                parent.skinCoord = b2xCoordinate(USE=USEname)
             elif isinstance(x3dnode, Coordinate):
                 print_console('WARNING',f"Adding skinCoord twice? {x3dnode}")
                 parent.skinCoord.append(x3dnode)
@@ -2174,8 +2182,8 @@ def export(context, x3dv_export_settings):
             shape = b2xShape(geometry=x3dnode);
             parent.children.append(shape)
         elif isinstance(parent, Group):
-            #print(f"{'    ' * depth} XXX parent {type(parent)} x3dnode {type(x3dnode)}")
             if not isinstance(x3dnode, HAnimJoint):
+                print(f"{'    ' * depth} Appending parent {type(parent)} x3dnode {type(x3dnode)}")
                 parent.children.append(x3dnode);
             if isinstance(x3dnode, Shape):
                 if x3dnode.geometry is not None:
@@ -2188,8 +2196,8 @@ def export(context, x3dv_export_settings):
                 pass
             elif x3dnode is None:
                 print_console('WARNING',f"Group child is None {type(parent)} and {type(x3dnode)}")
-            #else:
-            #    print_console('WARNING',f"Fell through for {type(parent)} and {type(x3dnode)}")
+            else:
+                print_console('WARNING',f"Fell through for {type(parent)} and {type(x3dnode)}")
         elif isinstance(parent, Transform):
             # print(f"{'    ' * depth} parent {type(parent)} x3dnode {type(x3dnode)}")
             parent.children.append(x3dnode)
@@ -2230,8 +2238,12 @@ def export(context, x3dv_export_settings):
                 x3d_type_str = "Transform"
                 begin = -1
             try:
-                end = obj_main_id.rindex("_")
-                x3d_oid = int(obj_main_id[end+1:])
+                if len(obj_children) > 0:
+                    end = ""
+                    x3d_oid = 0
+                else:
+                    end = obj_main_id.rindex("_")
+                    x3d_oid = int(obj_main_id[end+1:])
             except:
                 end = ""
                 x3d_oid = 0
@@ -2251,7 +2263,12 @@ def export(context, x3dv_export_settings):
                     x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
                 elif x3d_type_str in ("IndexedFaceSet", "IndexedLineSet", "LineSet", "Text"):
                     x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
-                elif x3d_type_str in ("HAnimSite", "HAnimSegment", "HAnimHumanoid"):
+                elif x3d_type_str in ("HAnimSite", "HAnimSegment"):
+                    x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
+                    x3d_obj = b2xHAnimNode(obj_main, x3d_matrix, x3d_name, x3d_type_str, x3d_obj)
+                elif x3d_type_str in ("HAnimHumanoid"):
+                    if x3d_name == "root" or x3d_name == "humanoid_root":
+                        x3d_name = "humanoid"
                     x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
                     x3d_obj = b2xHAnimNode(obj_main, x3d_matrix, x3d_name, x3d_type_str, x3d_obj)
                 elif x3d_type_str in ("HAnimJoint"):
@@ -2259,10 +2276,16 @@ def export(context, x3dv_export_settings):
                     x3d_obj = b2xHAnimNode(obj_main, x3d_matrix, x3d_name, x3d_type_str+"2", x3d_obj)
                 elif x3d_type_str in ("Transform"):
                     x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
-                    x3d_obj = b2xTransform(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix, x3d_obj)
+                    if x3d_obj is not None:
+                        x3d_obj = b2xTransform(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix, x3d_obj)
+                    else:
+                        print(f"WARNING, found weird case2: {x3d_type_str}, {x3d_oid}, {x3d_name}, {obj_main}, {x3d_matrix}")
                 elif x3d_type_str in ("Billboard"):
                     x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
-                    x3d_obj.axisOfRotation = axisOfRotation=(0, 0, 0)
+                    if x3d_obj is not None:
+                        x3d_obj.axisOfRotation = axisOfRotation=(0, 0, 0)
+                    else:
+                        print(f"WARNING, found weird case: {x3d_type_str}, {x3d_oid}, {x3d_name}, {obj_main}, {x3d_matrix}")
                 elif x3d_type_str in ("Shape"):
                     x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
                     x3d_obj = b2xShape(x3d_obj=x3d_obj)
@@ -2281,11 +2304,16 @@ def export(context, x3dv_export_settings):
             elif obj_main.type == "CURVE":
                 x3d_type_str = "LineSet"
                 x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
+            elif obj_main.type == "FONT":
+                x3d_type_str = "Text"
+                x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
             elif obj_main.type == "MESH":
                 x3d_type_str = "IndexedFaceSet"
                 x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
             elif obj_main.type == "ARMATURE":
                 x3d_type_str = "HAnimHumanoid"
+                if x3d_name == "root" or x3d_name == "humanoid_root":
+                    x3d_name = "humanoid"
                 x3d_obj = b2xInstantiate(x3d_type_str, x3d_oid, x3d_name, obj_main, x3d_matrix)
                 x3d_obj = b2xHAnimNode(obj_main, x3d_matrix, x3d_name, x3d_type_str, x3d_obj)
                 print(f"Found2 humanoid, parent {parent}\n\n\nFound2 x3d_obj {x3d_obj}")
@@ -2361,6 +2389,7 @@ def export(context, x3dv_export_settings):
                         if material is not None:
                             mat = b2xMaterial(material, world)
                             shape.appearance.material = mat
+                            break
                         else:
                             print(f"OUCH, Material None for Line Set {x3d_obj}")
                         # print_console('INFO',f"material {mat.diffuseColor}")
@@ -2379,6 +2408,7 @@ def export(context, x3dv_export_settings):
                         if material is not None:
                             mat = b2xMaterial(material, world)
                             shape.appearance.material = mat
+                            break
                         else:
                             print(f"OUCH, Material None for Text node {x3d_obj}")
                         # print_console('INFO',f"material {mat.diffuseColor}")
@@ -2464,6 +2494,7 @@ def export(context, x3dv_export_settings):
                         if material is not None:
                             mat = b2xMaterial(material, world)
                             shape.appearance.material = mat
+                            break
                         else:
                             print(f"OUCH, Material None for IFS {x3d_obj}")
                     #    print_console('INFO',f"material {mat.diffuseColor}")
@@ -2492,10 +2523,10 @@ def export(context, x3dv_export_settings):
                     if not obj_child in seen:
                         seen.append(obj_child)
                         # x3dnodelist is just [ node ], which we appended above
-                        after = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures, node)
-                        # print(f"After group {after}")
-                        # print_console('INFO', f"returned x3dnodelist {x3dnodelist} and {after}")
-                        if after:
+                        for a in  b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures, node).children:
+                            if not a in bottom.children:
+                                bottom.children.append(a)
+                        if after is not None:
                             for x3dnode in after.children:
                                 # if node:
                                 #     print_console('INFO', f"appending node {x3dnode} to\n{node.skin}")
@@ -2510,7 +2541,8 @@ def export(context, x3dv_export_settings):
                                         print(f"Found non-skin, {x3dnode}")
                                         print_console('INFO', f"appending node {x3dnode} to bottom {bottom.children}")
                                         bottom.children.append(x3dnode)
-                if len(DEFnodes) == 1:
+                            after = Group()
+                if len(DEFnodes) >= 1:
                     DEFname = DEFnodes[0].DEF
                     DEFnodes[0].USE = DEFname 
                     DEFnodes[0].DEF = None
@@ -2519,29 +2551,32 @@ def export(context, x3dv_export_settings):
                     DEFname = "JointsSkinCoordPoint"
                 if node:
                     node.skinCoord = b2xCoordinate(DEF=DEFname, point=point)  # TODO skinCoord comes before skin for now
-                after = Group()
                 interpolators = b2xHAnimNode(obj, None, obj.name, "HAnimInterpolators", node)
-                #print_console('INFO', f"Writing {len(interpolators)} nodes for animations.")
-                if interpolators is not None:
-                    b2x_append(after, interpolators, depth + 1)
+                if len(interpolators) > 0:
+                    bottom.children += interpolators
+                    print_console('INFO', f"exported {len(interpolators)} nodes for animations..")
             elif obj_type == 'EMPTY':
                 seen = []
                 for obj_child, obj_child_children in obj_children:
-                    # no need to combine after's
                     if not obj_child in seen:
                         seen.append(obj_child)
-                        after = b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures, x3d_obj)
+                        for a in b2x_object(obj_main, obj_child, obj_child_children, x3dmodel_scene, image_textures, x3d_obj).children:
+                            if not a in bottom.children:
+                                bottom.children.append(a)
             else:
                 print_console('INFO', "Ignoring [%s], object type [%s], python type [%s], data [%s] not handled yet" % (obj.name,obj_type,type(obj), type(obj.data)))
         # print_console('INFO', f"Number of objects in loop {objects}")
             interpolators = b2xInterpolators(obj, obj_main_id, obj_matrix, "") # prefix was "IN_"
-            if interpolators is not None:
-                b2x_append(after, interpolators, depth + 1)
+            if len(interpolators) > 0:
+                bottom.children += interpolators
+                print_console('INFO', f"exported {len(interpolators)} nodes for animations")
             if after:
                 for a in after.children:
                     if a not in bottom.children:
                         bottom.children.append(a)
+                after = Group()
 
+        print_console('INFO', f"bottom.children {len(bottom.children)}")
         return bottom
 
     # -------------------------------------------------------------------------
@@ -2643,17 +2678,17 @@ def export(context, x3dv_export_settings):
         for obj_main, obj_main_children in objects_hierarchy:
             if not obj_main in seen:
                 seen.append(obj_main)
-                after = b2x_object(None, obj_main, obj_main_children, x3dmodel.Scene, image_textures, x3d_obj)
+                children = b2x_object(None, obj_main, obj_main_children, x3dmodel.Scene, image_textures, x3d_obj).children
                 #if x3dnodelist:
                 #    print_console('INFO', f"appending2 {len(x3dnodelist)} sub-nodes for scene children.")
                 #   for x3dnode in x3dnodelist:
                 #       if x3dnode not in x3dmodel.Scene.children:
                 #           x3dmodel.Scene.children.append(x3dnode)
-                if after:
-                    print_console('INFO', f"appending {len(after.children)} sub-nodes for scene children.")
-                    for a in after.children:
-                        if a not in x3dmodel.Scene.children:
-                            x3dmodel.Scene.children.append(a)
+                if children:
+                    print_console('INFO', f"appending {len(children)} sub-nodes for scene children.")
+                    for c in children:
+                        if c not in x3dmodel.Scene.children:
+                            x3dmodel.Scene.children.append(c)
 
         # swap_USEbeforeDEF(node=x3dmodel.Scene)
         USEdict = {}
